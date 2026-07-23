@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Hulu Stock</title>
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1a8fff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Hulu Stock">
+    <meta name="application-name" content="Hulu Stock">
+    <meta name="msapplication-TileColor" content="#1a8fff">
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png">
+    <meta name="description" content="Modern point-of-sale for retail shops, pharmacies and supermarkets">
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
+    <!-- Apple splash screens (optional but nice) -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100dvh;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #E5E7EB;
+            border-radius: 8px;
+            transition: 0.2s;
+            font-size: 16px; /* prevent iOS zoom */
+            font-family: inherit;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #2563EB;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 0.875rem;
+            background: #2563EB;
+            color: white;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: 0.2s;
+            font-size: 15px;
+            min-height: 48px; /* comfortable touch target */
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-login:hover { background: #1D4ED8; }
+        .btn-login:active { transform: scale(.98); }
+
+        .error-box {
+            display: none;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            color: #991B1B;
+        }
+        .error-box.show { display: block; }
+
+        @media (max-width: 480px) {
+            .login-card { border-radius: 12px; padding: 1.5rem !important; }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="login-card w-full max-w-md p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold text-gray-800">Hulu Stock</h1>
+            <p class="text-gray-500 mt-2">Sign in to your account</p>
+        </div>
+
+        <form id="loginForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="email" class="input-field" required>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" id="password" class="input-field" required>
+            </div>
+
+            <button type="submit" id="loginBtn" class="btn-login">
+                <span id="btnText">Sign In</span>
+                <span id="btnLoading" class="hidden">Signing in...</span>
+            </button>
+        </form>
+
+        <div id="errorBox" class="error-box"></div>
+
+        <p class="text-center text-gray-400 text-sm mt-6">
+            © 2026 Hulu Stock
+        </p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/api.js"></script>
+
+    <script>
+        // Redirect if already logged in
+        const token = localStorage.getItem(
+            window.AppConfig?.STORAGE_KEYS?.AUTH_TOKEN || 'rf_auth_token'
+        );
+
+        if (token) {
+            window.location.href = "index.html";
+        }
+
+        const form = document.getElementById("loginForm");
+        const btn = document.getElementById("loginBtn");
+        const btnText = document.getElementById("btnText");
+        const btnLoading = document.getElementById("btnLoading");
+        const errorBox = document.getElementById("errorBox");
+
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.classList.add("show");
+        }
+
+        function clearError() {
+            errorBox.classList.remove("show");
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            clearError();
+
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value;
+
+            btn.disabled = true;
+            btnText.classList.add("hidden");
+            btnLoading.classList.remove("hidden");
+
+            try {
+                let response;
+                try {
+                    response = await window.AuthAPI.login(email, password);
+                } catch (normalLoginError) {
+                    // Super admins are authenticated by /api/superadmin/login using backend env vars,
+                    // not by the tenant users table. If normal tenant login fails, try the owner login once.
+                    try {
+                        const superResp = await fetch(`${window.API.baseURL}/superadmin/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password })
+                        });
+                        if (superResp.ok) {
+                            const superData = await superResp.json();
+                            localStorage.setItem('xpos_superadmin_token', superData.access_token);
+                            window.location.href = 'superadmin.html';
+                            return;
+                        }
+                    } catch (_) {
+                        // Keep original tenant-login error if the superadmin endpoint is unreachable.
+                    }
+                    throw normalLoginError;
+                }
+
+                if (!response.access_token) {
+                    throw new Error("Invalid server response");
+                }
+
+                window.API.setToken(response.access_token);
+
+                localStorage.setItem(
+                    window.AppConfig.STORAGE_KEYS.USER_DATA,
+                    JSON.stringify(response.user)
+                );
+
+                localStorage.setItem(
+                    window.AppConfig.STORAGE_KEYS.ORGANIZATION,
+                    JSON.stringify(response.organization)
+                );
+
+                if (response.branch) {
+                    localStorage.setItem(
+                        window.AppConfig.STORAGE_KEYS.BRANCH,
+                        JSON.stringify(response.branch)
+                    );
+                }
+
+                window.location.href = "index.html";
+
+            } catch (error) {
+                showError(error.message || "Login failed");
+            } finally {
+                btn.disabled = false;
+                btnText.classList.remove("hidden");
+                btnLoading.classList.add("hidden");
+            }
+        });
+
+        console.log("API Base URL:", window.API.baseURL);
+    </script>
+
+</body>
+</html>

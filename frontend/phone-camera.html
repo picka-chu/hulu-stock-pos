@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Hulu Stock Camera</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/js/config.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #2563EB;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --border: rgba(255,255,255,.1);
+            --text-1: #f1f5f9;
+            --text-2: #94a3b8;
+            --danger: #ef4444;
+            --success: #22c55e;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text-1);
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .logo { font-size: 18px; font-weight: 800; color: var(--primary); }
+        .status-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #f59e0b;
+            transition: background .4s;
+        }
+        .status-dot.connected { background: var(--success); }
+
+        /* ── Main pages ─────────────────────────────────────── */
+        .page { display: none; flex: 1; flex-direction: column; padding: 24px 20px; }
+        .page.active { display: flex; }
+
+        /* Login page */
+        .login-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 24px;
+            max-width: 400px;
+            width: 100%;
+            margin: auto;
+        }
+        .login-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+        .login-card p  { font-size: 13px; color: var(--text-2); margin-bottom: 24px; }
+        .form-group    { margin-bottom: 16px; }
+        .form-label    { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
+        .form-input    { width: 100%; padding: 13px 14px; border-radius: 10px; border: 1.5px solid var(--border); background: rgba(255,255,255,.05); color: var(--text-1); font-size: 15px; outline: none; }
+        .form-input:focus { border-color: var(--primary); }
+        .btn { width: 100%; padding: 14px; border-radius: 10px; border: none; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:disabled { opacity: .5; }
+        .error-msg { font-size: 13px; color: var(--danger); margin-top: 12px; text-align: center; }
+
+        /* Home page */
+        .welcome { text-align: center; margin-bottom: 32px; }
+        .welcome .icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .welcome h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+        .welcome p  { font-size: 13px; color: var(--text-2); }
+        .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .action-btn {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-1);
+            text-align: center;
+            transition: border-color .15s, background .15s;
+        }
+        .action-btn:active { background: rgba(255,255,255,.07); }
+        .action-btn i { font-size: 1.8rem; }
+        .action-btn.barcode { border-color: rgba(37,99,235,.4); }
+        .action-btn.barcode i { color: #60a5fa; }
+        .action-btn.photo   { border-color: rgba(16,185,129,.4); }
+        .action-btn.photo   i { color: #34d399; }
+        .action-btn.smart   { border-color: rgba(245,158,11,.4); }
+        .action-btn.smart   i { color: #fbbf24; }
+
+        .waiting-card {
+            background: rgba(37,99,235,.1);
+            border: 1.5px solid rgba(37,99,235,.3);
+            border-radius: 14px;
+            padding: 16px;
+            font-size: 13px;
+            color: #93c5fd;
+            text-align: center;
+            margin-top: 16px;
+        }
+
+        /* Camera page */
+        .camera-wrap {
+            position: relative;
+            flex: 1;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            min-height: 260px;
+        }
+        #camVideo {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .cam-overlay {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .scan-guide {
+            width: 220px; height: 220px;
+            border: 2.5px solid rgba(255,255,255,.7);
+            border-radius: 12px;
+        }
+        .scan-guide::before, .scan-guide::after {
+            content: '';
+            position: absolute;
+            width: 28px; height: 28px;
+            border-color: #fff;
+            border-style: solid;
+        }
+        .cam-hint {
+            position: absolute;
+            bottom: 14px; left: 0; right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: rgba(255,255,255,.7);
+            font-weight: 600;
+        }
+        .cam-actions {
+            display: flex; gap: 12px;
+        }
+        .cam-actions .btn { flex: 1; }
+        .btn-capture { background: #fff; color: #0f172a; font-size: 14px; }
+        .btn-cancel  { background: var(--surface); color: var(--text-1); border: 1.5px solid var(--border); }
+
+        /* Done page */
+        .done-wrap {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 32px 20px;
+        }
+        .done-icon {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            background: rgba(34,197,94,.15);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 20px;
+        }
+        .done-icon i { font-size: 2.2rem; color: var(--success); }
+        .done-wrap h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+        .done-wrap p  { font-size: 14px; color: var(--text-2); margin-bottom: 28px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="logo"><i class="fas fa-camera"></i> Hulu Stock Camera</div>
+    <div class="status-dot" id="statusDot" title="Connecting…"></div>
+</div>
+
+<!-- ── Page: Login ──────────────────────────────────────────────────────── -->
+<div class="page active" id="pageLogin">
+    <div class="login-card">
+        <h2>Sign in</h2>
+        <p>Log in with your Hulu Stock account to use your phone as a camera for the PC.</p>
+        <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="loginEmail" class="form-input" autocomplete="email" placeholder="your@email.com">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="loginPassword" class="form-input" autocomplete="current-password" placeholder="Password">
+        </div>
+        <button class="btn btn-primary" id="loginBtn" onclick="phoneLogin()">
+            <i class="fas fa-sign-in-alt"></i> Sign In
+        </button>
+        <div class="error-msg" id="loginError" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- ── Page: Home ───────────────────────────────────────────────────────── -->
+<div class="page" id="pageHome">
+    <div class="welcome">
+        <div class="icon">📱</div>
+        <h2>Phone Camera Ready</h2>
+        <p>Your phone is connected to the PC session.<br>Tap an action below or wait for the PC to request a scan.</p>
+    </div>
+
+    <div class="action-grid">
+        <div class="action-btn barcode" onclick="phoneStartBarcode()">
+            <i class="fas fa-barcode"></i>
+            Scan Barcode
+            <span style="font-size:11px;color:var(--text-2);">for POS / items</span>
+        </div>
+        <div class="action-btn photo" onclick="phoneStartPhoto()">
+            <i class="fas fa-calendar-alt"></i>
+            Expiry Photo
+            <span style="font-size:11px;color:var(--text-2);">for Fast Scan</span>
+        </div>
+    </div>
+
+    <div class="waiting-card" id="waitingCard" style="display:none;">
+        <i class="fas fa-laptop" style="margin-right:6px;"></i>
+        PC is requesting a <strong id="waitingType">scan</strong> — tap the button above
+    </div>
+</div>
+
+<!-- ── Page: Camera ─────────────────────────────────────────────────────── -->
+<div class="page" id="pageCamera" style="padding:16px;">
+    <div class="camera-wrap" id="cameraWrap">
+        <video id="camVideo" autoplay playsinline muted></video>
+        <div class="cam-overlay">
+            <div class="scan-guide" id="scanGuide"></div>
+        </div>
+        <div class="cam-hint" id="camHint">Point at barcode</div>
+    </div>
+    <div class="cam-actions">
+        <button class="btn btn-capture" id="captureBtn" onclick="phoneCapture()">
+            <i class="fas fa-camera"></i> Capture
+        </button>
+        <button class="btn btn-cancel" onclick="phoneCancelCamera()">
+            Cancel
+        </button>
+    </div>
+</div>
+
+<!-- ── Page: Done ───────────────────────────────────────────────────────── -->
+<div class="page" id="pageDone">
+    <div class="done-wrap">
+        <div class="done-icon"><i class="fas fa-check"></i></div>
+        <h2>Sent to PC ✓</h2>
+        <p id="doneMsg">The result was sent to the PC and will appear there automatically.</p>
+        <button class="btn btn-primary" onclick="showPage('pageHome')" style="width:auto;padding:12px 28px;">
+            <i class="fas fa-arrow-left"></i> Back
+        </button>
+    </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let _supabase     = null;
+let _channel      = null;
+let _sessionId    = null;
+let _token        = null;
+let _camStream    = null;
+let _camMode      = 'barcode';   // 'barcode' | 'photo'
+let _barcodeLoop  = null;
+let _decoder      = null;
+
+// ── Routing ──────────────────────────────────────────────────────────────────
+function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+// ── Startup ───────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+    // Get session ID from URL
+    const params = new URLSearchParams(location.search);
+    _sessionId = params.get('phone_cam');
+
+    if (!_sessionId) {
+        // Opened without a session — redirect to main app
+        location.href = 'index.html';
+        return;
+    }
+
+    // Check if already logged in
+    _token = localStorage.getItem(window.AppConfig?.STORAGE_KEYS?.AUTH_TOKEN || 'rf_auth_token');
+    if (_token) {
+        await _connectChannel();
+        showPage('pageHome');
+    } else {
+        showPage('pageLogin');
+    }
+});
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+async function phoneLogin() {
+    const email    = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const btn      = document.getElementById('loginBtn');
+    const errEl    = document.getElementById('loginError');
+
+    if (!email || !password) {
+        errEl.textContent = 'Please enter email and password';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing in…';
+    errEl.style.display = 'none';
+
+    try {
+        const base = window.AppConfig?.API_BASE_URL || '/api';
+        const resp = await fetch(`${base}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || data.message || 'Login failed');
+
+        _token = data.access_token;
+        localStorage.setItem(window.AppConfig?.STORAGE_KEYS?.AUTH_TOKEN || 'rf_auth_token', _token);
+
+        await _connectChannel();
+        showPage('pageHome');
+    } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+    }
+}
+
+// ── Supabase channel ──────────────────────────────────────────────────────────
+async function _connectChannel() {
+    const url = window.AppConfig?.SUPABASE_URL;
+    const key = window.AppConfig?.SUPABASE_KEY;
+    if (!url || !key || url.includes('your-project')) {
+        console.warn('[PhoneCam] Supabase not configured');
+        return;
+    }
+
+    _supabase = supabase.createClient(url, key);
+    _channel  = _supabase
+        .channel(`phone_cam:${_sessionId}`)
+        .on('broadcast', { event: 'request' }, (payload) => {
+            _onPCRequest(payload.payload);
+        })
+        .subscribe((status) => {
+            const dot = document.getElementById('statusDot');
+            if (status === 'SUBSCRIBED') {
+                dot.classList.add('connected');
+                dot.title = 'Connected to PC';
+                // Announce presence
+                _channel.send({
+                    type: 'broadcast',
+                    event: 'connected',
+                    payload: { device: navigator.userAgent.includes('iPhone') ? 'iPhone' :
+                               navigator.userAgent.includes('Android') ? 'Android Phone' : 'Phone' },
+                });
+            } else {
+                dot.classList.remove('connected');
+            }
+        });
+}
+
+function _onPCRequest(data) {
+    const type = data?.type || 'barcode';
+    const card = document.getElementById('waitingCard');
+    const typeEl = document.getElementById('waitingType');
+    if (card) card.style.display = 'block';
+    if (typeEl) typeEl.textContent = type === 'barcode' ? 'barcode scan' : 'expiry photo';
+    // Auto-open camera if home page is visible
+    if (document.getElementById('pageHome').classList.contains('active')) {
+        if (type === 'barcode') phoneStartBarcode();
+        else phoneStartPhoto();
+    }
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+async function _startCamera(forBarcode = true) {
+    _camMode = forBarcode ? 'barcode' : 'photo';
+    const hint    = document.getElementById('camHint');
+    const capBtn  = document.getElementById('captureBtn');
+    const guide   = document.getElementById('scanGuide');
+
+    hint.textContent    = forBarcode ? 'Point at barcode — auto-detects' : 'Frame the expiry date clearly';
+    capBtn.innerHTML    = forBarcode
+        ? '<i class="fas fa-barcode"></i> Auto-detecting…'
+        : '<i class="fas fa-camera"></i> Capture Photo';
+    guide.style.display = forBarcode ? 'block' : 'none';
+
+    showPage('pageCamera');
+
+    try {
+        _camStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' },
+                width:  { ideal: 1920 },
+                height: { ideal: 1080 },
+            },
+            audio: false,
+        });
+        const video = document.getElementById('camVideo');
+        video.srcObject = _camStream;
+        await video.play();
+
+        if (forBarcode) _startBarcodeDetect(video);
+    } catch (e) {
+        alert('Camera error: ' + e.message);
+        phoneCancelCamera();
+    }
+}
+
+function _startBarcodeDetect(video) {
+    // Use native BarcodeDetector if available
+    if (!('BarcodeDetector' in window)) {
+        document.getElementById('captureBtn').innerHTML =
+            '<i class="fas fa-barcode"></i> No auto-detect — type manually';
+        return;
+    }
+
+    _decoder = new BarcodeDetector({
+        formats: ['ean_13','ean_8','code_128','qr_code','code_39','upc_a','upc_e','itf','pdf417']
+    });
+
+    const canvas = document.createElement('canvas');
+    const ctx    = canvas.getContext('2d');
+
+    async function loop() {
+        if (!_camStream) return;
+        if (video.readyState >= 2) {
+            canvas.width  = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            try {
+                const codes = await _decoder.detect(canvas);
+                if (codes.length > 0) {
+                    const code = codes[0].rawValue;
+                    _stopCamera();
+                    _sendResult('barcode', code);
+                    return;
+                }
+            } catch {}
+        }
+        _barcodeLoop = requestAnimationFrame(loop);
+    }
+
+    _barcodeLoop = requestAnimationFrame(loop);
+}
+
+function phoneStartBarcode() { _startCamera(true); }
+function phoneStartPhoto()   { _startCamera(false); }
+
+function phoneCapture() {
+    if (_camMode === 'barcode') {
+        // Manual entry fallback
+        const code = prompt('BarcodeDetector not supported.\nType or paste the barcode:');
+        if (code?.trim()) {
+            _stopCamera();
+            _sendResult('barcode', code.trim());
+        }
+        return;
+    }
+    // Photo capture
+    const video  = document.getElementById('camVideo');
+    const canvas = document.createElement('canvas');
+    canvas.width  = video.videoWidth  || 1280;
+    canvas.height = video.videoHeight || 720;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const b64 = canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+    _stopCamera();
+    _sendResult('photo', b64);
+}
+
+function phoneCancelCamera() {
+    _stopCamera();
+    showPage('pageHome');
+}
+
+function _stopCamera() {
+    if (_barcodeLoop) { cancelAnimationFrame(_barcodeLoop); _barcodeLoop = null; }
+    if (_camStream) {
+        _camStream.getTracks().forEach(t => t.stop());
+        _camStream = null;
+    }
+    const video = document.getElementById('camVideo');
+    if (video) video.srcObject = null;
+}
+
+// ── Send result to PC ─────────────────────────────────────────────────────────
+function _sendResult(type, value) {
+    if (_channel) {
+        _channel.send({
+            type:    'broadcast',
+            event:   'result',
+            payload: { type, value, timestamp: Date.now() },
+        });
+    }
+
+    const msg = type === 'barcode'
+        ? `Barcode "${value}" sent to PC`
+        : 'Expiry photo sent to PC';
+    document.getElementById('doneMsg').textContent = msg;
+    document.getElementById('waitingCard').style.display = 'none';
+    showPage('pageDone');
+}
+
+// Announce disconnect on page close
+window.addEventListener('beforeunload', () => {
+    if (_channel) {
+        _channel.send({ type: 'broadcast', event: 'disconnected', payload: {} });
+    }
+});
+</script>
+</body>
+</html>

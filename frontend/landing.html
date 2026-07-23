@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hulu Stock — Modern Point of Sale</title>
+    <meta name="description" content="Hulu Stock is a modern, multi-tenant POS platform for retail shops, pharmacies and supermarkets.">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1a1a2e;
+            background: #ffffff;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; text-decoration: none; }
+        img { max-width: 100%; display: block; }
+
+        .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+        /* ── Header ──────────────────────────────────────────── */
+        header {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 0;
+        }
+        header .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo {
+            font-size: 1.375rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #1a1a2e;
+        }
+        .logo span { color: #2563eb; }
+        nav { display: flex; gap: 32px; align-items: center; }
+        nav a {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #4b5563;
+            transition: color 0.15s;
+        }
+        nav a:hover { color: #111827; }
+
+        /* ── Hero ────────────────────────────────────────────── */
+        .hero {
+            padding: 100px 0 80px;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            max-width: 720px;
+            margin: 0 auto 20px;
+            color: #111827;
+        }
+        .hero h1 span { color: #2563eb; }
+        .hero p {
+            font-size: 1.125rem;
+            color: #6b7280;
+            max-width: 560px;
+            margin: 0 auto 40px;
+        }
+        .hero-actions { display: flex; gap: 12px; justify-content: center; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            transition: background 0.15s, color 0.15s;
+        }
+        .btn-primary {
+            background: #2563eb;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-outline {
+            background: transparent;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .btn-outline:hover { background: #f3f4f6; }
+
+        .hero-image {
+            margin-top: 64px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #f9fafb;
+        }
+        .hero-image .placeholder {
+            padding: 80px 24px;
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+
+        /* ── Features ─────────────────────────────────────────── */
+        .features { padding: 96px 0; }
+        .features h2 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+        }
+        .features > .container > p {
+            text-align: center;
+            color: #6b7280;
+            max-width: 480px;
+            margin: 0 auto 56px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 2px;
+            background: #e5e7eb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .feature-card {
+            background: #fff;
+            padding: 40px 28px;
+        }
+        .feature-card .icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 1.25rem;
+        }
+        .feature-card h3 {
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 0.875rem;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        /* ── Capabilities ──────────────────────────────────── */
+        .capabilities { padding: 64px 0 96px; }
+        .capabilities h2 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 48px;
+            letter-spacing: -0.02em;
+        }
+        .caps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .cap-item {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 24px;
+        }
+        .cap-item h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .cap-item p {
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        /* ── Footer ───────────────────────────────────────────── */
+        footer {
+            border-top: 1px solid #e5e7eb;
+            padding: 32px 0;
+        }
+        footer .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        footer p {
+            font-size: 0.8125rem;
+            color: #9ca3af;
+        }
+
+        /* ── Responsive ────────────────────────────────────── */
+        @media (max-width: 640px) {
+            .hero { padding: 64px 0 48px; }
+            .hero h1 { font-size: 2rem; }
+            .hero p { font-size: 1rem; }
+            .hero-actions { flex-direction: column; align-items: center; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .caps-grid { grid-template-columns: 1fr; }
+            nav a { font-size: 0.8125rem; gap: 16px; }
+            nav { gap: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <a href="/landing.html" class="logo">Hulu <span>Stock</span></a>
+        <nav>
+            <a href="#features">Features</a>
+            <a href="#capabilities">Capabilities</a>
+            <a href="https://hulustocks.onrender.com/api/health" target="_blank">Status</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <div class="container">
+        <h1>Point of sale that works <span>for any business</span></h1>
+        <p>Multi-tenant, pharmacy-ready, offline-capable. Built for retail shops, pharmacies, and supermarkets across Ethiopia.</p>
+        <div class="hero-actions">
+            <a href="mailto:bereket@onyx.com" class="btn btn-primary">Contact Sales</a>
+            <a href="https://hulustocks.onrender.com/api/health" target="_blank" class="btn btn-outline">System Status</a>
+        </div>
+        <div class="hero-image">
+            <div class="placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 16px;opacity:.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                <p>Hulu Stock Dashboard — point-of-sale, inventory, reports</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="features" id="features">
+    <div class="container">
+        <h2>Everything you need to run your store</h2>
+        <p>One platform for sales, stock, staff, and reporting — accessible from any device.</p>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="icon" style="background:#eff6ff;color:#2563eb;">&#9906;</div>
+                <h3>Point of Sale</h3>
+                <p>Fast barcode scanning, split payments, receipt printing, and FEFO batch picking for pharmacy stock.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon" style="background:#f0fdf4;color:#16a34a;">&#9776;</div>
+                <h3>Inventory Management</h3>
+                <p>Real-time stock tracking, batch-level FEFO, expiry alerts, low-stock notifications, and bulk adjustments.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon" style="background:#fefce8;color:#ca8a04;">&#9733;</div>
+                <h3>Multi-Branch &amp; Multi-Tenant</h3>
+                <p>Run multiple branches under one organization. Each branch has its own stock, users, and sales data.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon" style="background:#f5f3ff;color:#7c3aed;">&#9878;</div>
+                <h3>Pharmacy Mode</h3>
+                <p>Packaging tiers (carton/box/strip/base), controlled substance flag, expiry tracking, and unit conversions.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon" style="background:#fff1f2;color:#e11d48;">&#9881;</div>
+                <h3>Reporting &amp; Analytics</h3>
+                <p>Daily sales, profit by item, stock valuation, branch performance, and expense tracking — all in one view.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon" style="background:#f0fdfa;color:#0d9488;">&#9775;</div>
+                <h3>Push Notifications</h3>
+                <p>Real-time sale alerts, low-stock warnings, and expiry reminders delivered to desktop and mobile.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="capabilities" id="capabilities">
+    <div class="container">
+        <h2>Built for real-world retail</h2>
+        <div class="caps-grid">
+            <div class="cap-item"><h4>Offline-capable PWA</h4><p>Works on slow or intermittent networks. Service worker caches assets for reliable performance.</p></div>
+            <div class="cap-item"><h4>Barcode scanning</h4><p>Built-in scanner, camera-based barcode reader, and phone-as-camera mode for PC-free scanning.</p></div>
+            <div class="cap-item"><h4>Split payments</h4><p>Cash, bank transfer, and mobile money in a single transaction. Full payment breakdown on receipts.</p></div>
+            <div class="cap-item"><h4>Role-based access</h4><p>Admin, manager, and cashier roles with granular page and action permissions per branch.</p></div>
+            <div class="cap-item"><h4>AI-assisted item lookup</h4><p>Gemini-powered recognition for unknown barcodes. Automatic category suggestion and expiry extraction.</p></div>
+            <div class="cap-item"><h4>Return &amp; refund</h4><p>Full and partial returns with automatic stock restoration and credit note generation.</p></div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>&copy; 2026 Hulu Stock. All rights reserved.</p>
+        <p>Built with FastAPI &middot; Supabase &middot; Vanilla JS</p>
+    </div>
+</footer>
+
+</body>
+</html>

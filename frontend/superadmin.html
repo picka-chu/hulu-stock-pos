@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hulu Stock · Owner Panel</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1a8fff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #080b12;
+      --surface:  #0e1220;
+      --card:     #131929;
+      --border:   #1e2a3a;
+      --accent:   #00d4ff;
+      --accent2:  #7c3aed;
+      --danger:   #ff3b5c;
+      --success:  #00e676;
+      --warn:     #ffab00;
+      --text:     #e0eaff;
+      --muted:    #5a6a8a;
+      --mono:     'JetBrains Mono', monospace;
+      --sans:     'Syne', sans-serif;
+    }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── LOGIN ─────────────────────────────────────────── */
+    #loginScreen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 20% 80%, rgba(0,212,255,.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(124,58,237,.08) 0%, transparent 50%),
+        var(--bg);
+    }
+    .login-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%; max-width: 400px;
+      box-shadow: 0 0 80px rgba(0,0,0,.8), 0 0 0 1px rgba(0,212,255,.05);
+    }
+    .login-logo {
+      text-align: center; margin-bottom: 36px;
+    }
+    .login-logo .ring {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 24px; margin-bottom: 14px;
+      box-shadow: 0 0 40px rgba(0,212,255,.25);
+    }
+    .login-logo h1 { font-size: 20px; font-weight: 800; letter-spacing: -1px; }
+    .login-logo p { color: var(--muted); font-size: 12px; font-family: var(--mono); margin-top: 4px; }
+    .f-group { margin-bottom: 16px; }
+    .f-group label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-family: var(--mono); }
+    .f-group input {
+      width: 100%; padding: 12px 16px;
+      background: var(--card); border: 1.5px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 14px; font-family: inherit;
+      transition: .2s;
+    }
+    .f-group input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,.1); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 11px 18px; border-radius: 10px; font-size: 13px; font-weight: 700;
+      font-family: var(--sans); cursor: pointer; transition: .15s; border: none;
+      white-space: nowrap;
+    }
+    .btn-full { width: 100%; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; }
+    .btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+    .btn-success { background: var(--success); color: #000; }
+    .btn-danger  { background: var(--danger);  color: #fff; }
+    .btn-warn    { background: var(--warn);    color: #000; }
+    .btn-ghost   { background: var(--border);  color: var(--text); }
+    .btn-ghost:hover { background: #2a3550; }
+    .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-sm { padding: 7px 12px; font-size: 11px; border-radius: 8px; }
+    .btn-xs { padding: 4px 10px; font-size: 10px; border-radius: 6px; }
+
+    /* ── SHELL ─────────────────────────────────────────── */
+    #appShell { display: none; }
+    #appShell.active { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* ── TOP NAV ───────────────────────────────────────── */
+    .topnav {
+      display: flex; align-items: center; gap: 0;
+      padding: 0 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 800; font-size: 15px; letter-spacing: -0.5px;
+      margin-right: 32px; flex-shrink: 0;
+    }
+    .nav-brand .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .nav-tabs { display: flex; gap: 2px; flex: 1; }
+    .nav-tab {
+      display: flex; align-items: center; gap: 7px;
+      padding: 0 16px; height: 56px;
+      font-size: 12px; font-weight: 600; color: var(--muted);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: .15s; white-space: nowrap; background: none; border-top: none; border-left: none; border-right: none;
+      font-family: var(--sans);
+    }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .health-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); transition: .3s;
+    }
+    .health-dot.ok      { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .health-dot.degraded { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+    /* ── MAIN CONTENT ──────────────────────────────────── */
+    .main { flex: 1; padding: 28px 28px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── STAT CARDS ────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px; margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      opacity: 0; transition: opacity .2s;
+    }
+    .stat-card:hover::before { opacity: 1; }
+    .stat-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; margin-bottom: 12px;
+    }
+    .stat-val { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+    .stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .5px; }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    /* ── SECTION HEADER ────────────────────────────────── */
+    .sec-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
+    }
+    .sec-head h3 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .sec-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* ── TABLE ─────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .search-bar {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .search-bar input {
+      width: 100%; padding: 9px 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 13px;
+      font-family: var(--mono);
+    }
+    .search-bar input:focus { outline: none; border-color: var(--accent); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; padding: 10px 16px;
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      font-family: var(--mono); white-space: nowrap;
+    }
+    td {
+      padding: 13px 16px;
+      border-bottom: 1px solid rgba(30,42,58,.6);
+      font-size: 13px; vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(0,212,255,.02); }
+    .org-name { font-weight: 700; font-size: 14px; }
+    .org-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 9px; border-radius: 20px;
+      font-size: 10px; font-weight: 700; font-family: var(--mono);
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+    .badge-green  { background: rgba(0,230,118,.12); color: var(--success); }
+    .badge-red    { background: rgba(255,59,92,.12);  color: var(--danger); }
+    .badge-blue   { background: rgba(0,212,255,.12);  color: var(--accent); }
+    .badge-purple { background: rgba(124,58,237,.15); color: #a78bfa; }
+    .badge-yellow { background: rgba(255,171,0,.12);  color: var(--warn); }
+    .dot-active   { color: var(--success); }
+    .dot-inactive { color: var(--danger); }
+    .feat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .feat-chip {
+      padding: 2px 7px; border-radius: 4px; font-size: 10px;
+      font-family: var(--mono); font-weight: 600;
+    }
+    .feat-chip.on  { background: rgba(0,230,118,.1); color: var(--success); }
+    .feat-chip.off { background: rgba(255,59,92,.1);  color: var(--danger); text-decoration: line-through; }
+
+    .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .empty-state {
+      padding: 60px 20px; text-align: center; color: var(--muted);
+    }
+    .empty-state i { font-size: 2.5rem; opacity: .3; display: block; margin-bottom: 12px; }
+    .spinner {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      animation: spin .8s linear infinite; display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── MODALS ────────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 18px; width: 100%; max-width: 560px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 40px 80px rgba(0,0,0,.8);
+    }
+    .modal-wide { max-width: 740px; }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px 0;
+    }
+    .modal-title { font-size: 16px; font-weight: 800; }
+    .modal-close {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--border); border: none; color: var(--muted);
+      cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-close:hover { background: var(--danger); color: #fff; }
+    .modal-body { padding: 20px 24px 24px; }
+    .modal-footer {
+      display: flex; gap: 10px; justify-content: flex-end;
+      padding: 0 24px 20px;
+    }
+    .f-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .f-group { margin-bottom: 14px; }
+    .f-group label {
+      display: block; font-size: 10px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 7px;
+      font-family: var(--mono);
+    }
+    .f-group input, .f-group select, .f-group textarea {
+      width: 100%; padding: 10px 13px;
+      background: var(--card); border: 1.5px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 13px;
+      font-family: var(--sans); transition: .15s;
+    }
+    .f-group input:focus, .f-group select:focus, .f-group textarea:focus {
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,.08);
+    }
+    .f-group select option { background: var(--card); }
+    .f-group textarea { resize: vertical; min-height: 70px; }
+
+    /* ── FEATURE TOGGLES ───────────────────────────────── */
+    .feat-section { margin-bottom: 20px; }
+    .feat-section-title {
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1px;
+      font-family: var(--mono); margin-bottom: 10px;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+    .feat-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 13px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 9px; cursor: pointer; transition: .15s;
+      gap: 10px;
+    }
+    .feat-toggle:hover { border-color: var(--accent); }
+    .feat-toggle.enabled  { border-color: rgba(0,230,118,.3); background: rgba(0,230,118,.04); }
+    .feat-toggle.disabled { border-color: rgba(255,59,92,.2); opacity: .7; }
+    .feat-toggle-label { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .feat-toggle-label i { color: var(--muted); width: 14px; }
+    .toggle-sw {
+      position: relative; width: 36px; height: 20px; flex-shrink: 0;
+    }
+    .toggle-sw input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0; border-radius: 20px;
+      background: var(--border); transition: .2s; cursor: pointer;
+    }
+    .toggle-track::after {
+      content: ''; position: absolute;
+      left: 3px; top: 3px; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--muted);
+      transition: .2s;
+    }
+    input:checked + .toggle-track { background: var(--success); }
+    input:checked + .toggle-track::after { transform: translateX(16px); background: #000; }
+    .limit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+    .limit-field label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: block; font-family: var(--mono); }
+    .limit-field input { width: 100%; padding: 8px 11px; background: var(--card); border: 1.5px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 13px; }
+    .limit-field input:focus { outline: none; border-color: var(--accent); }
+    .limit-hint { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
+
+    /* ── REQUESTS LOG ──────────────────────────────────── */
+    .req-list { display: flex; flex-direction: column; gap: 4px; }
+    .req-row {
+      display: grid;
+      grid-template-columns: 140px 56px 1fr 60px 70px;
+      align-items: center; gap: 10px;
+      padding: 8px 14px;
+      background: var(--card); border-radius: 8px;
+      font-family: var(--mono); font-size: 11px;
+      border: 1px solid var(--border);
+    }
+    .req-ts   { color: var(--muted); }
+    .req-meth { font-weight: 700; }
+    .req-meth.GET    { color: var(--accent); }
+    .req-meth.POST   { color: var(--success); }
+    .req-meth.PATCH  { color: var(--warn); }
+    .req-meth.PUT    { color: var(--warn); }
+    .req-meth.DELETE { color: var(--danger); }
+    .req-path { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .req-status { text-align: right; font-weight: 700; }
+    .req-status.ok  { color: var(--success); }
+    .req-status.err { color: var(--danger); }
+    .req-ms { text-align: right; color: var(--muted); }
+
+    /* ── HEALTH PANEL ──────────────────────────────────── */
+    .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .health-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 20px 22px;
+    }
+    .health-card-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); margin-bottom: 14px; }
+    .health-val { font-size: 26px; font-weight: 800; font-family: var(--mono); }
+    .health-val.ok  { color: var(--success); }
+    .health-val.bad { color: var(--danger); }
+    .health-desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── CONFIRM MODAL ─────────────────────────────────── */
+    #confirmModal .modal { max-width: 400px; text-align: center; padding: 32px 28px; }
+    #confirmModal .confirm-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    #confirmModal h3 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+    #confirmModal p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+    /* ── TOAST ─────────────────────────────────────────── */
+    #toastContainer {
+      position: fixed; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 10px; z-index: 9999;
+    }
+    .toast {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 18px; border-radius: 12px;
+      font-size: 13px; font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,.5);
+      animation: toastIn .2s ease;
+      min-width: 260px;
+    }
+    @keyframes toastIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:none; } }
+    .toast-success { background: #0a2e1a; border: 1px solid var(--success); color: var(--success); }
+    .toast-error   { background: #2e0a14; border: 1px solid var(--danger);  color: var(--danger); }
+    .toast-info    { background: #0a1e2e; border: 1px solid var(--accent);  color: var(--accent); }
+    .toast-warn    { background: #2e1e0a; border: 1px solid var(--warn);    color: var(--warn); }
+
+    /* ── RESPONSIVE ────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .main { padding: 16px; }
+      .nav-tab span { display: none; }
+      .nav-tab { padding: 0 12px; }
+      .f-row { grid-template-columns: 1fr; }
+      .req-row { grid-template-columns: 1fr 1fr; }
+      .req-ts, .req-ms { display: none; }
+      th:nth-child(4), td:nth-child(4),
+      th:nth-child(5), td:nth-child(5) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── LOGIN ──────────────────────────────────────────────────────────── -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="ring">⚡</div>
+      <h1>Hulu Stock Owner</h1>
+      <p>SUPERADMIN · FULL CONTROL</p>
+    </div>
+    <div class="f-group">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="admin@example.com" />
+    </div>
+    <div class="f-group">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+    </div>
+    <button class="btn btn-primary btn-full" onclick="doLogin()" id="loginBtn">
+      <i class="fas fa-sign-in-alt"></i> Sign In
+    </button>
+    <div id="loginErr" style="color:var(--danger);font-size:12px;text-align:center;margin-top:12px;display:none;"></div>
+  </div>
+</div>
+
+<!-- ── APP SHELL ───────────────────────────────────────────────────────── -->
+<div id="appShell">
+  <nav class="topnav">
+    <div class="nav-brand">
+      <div class="dot"></div>
+      Hulu Stock OWNER
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('orgs',this)" data-tab="orgs">
+        <i class="fas fa-building"></i><span>Organisations</span>
+      </button>
+      <button class="nav-tab" onclick="switchTab('performance',this)" data-tab="performance">
+        <i class="fas fa-chart-line"></i><span>Performance</span>
+      </button>
+      <button class="nav-tab" onclick="switchTab('requests',this)" data-tab="requests">
+        <i class="fas fa-stream"></i><span>Requests</span>
+      </button>
+    </div>
+    <div class="nav-right">
+      <div class="health-dot" id="healthDot" title="DB health"></div>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">
+        <i class="fas fa-sign-out-alt"></i>
+      </button>
+    </div>
+  </nav>
+
+  <div class="main">
+
+    <!-- ── ORGANISATIONS TAB ──────────────────────────── -->
+    <div id="tab-orgs" class="tab-panel active">
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(0,212,255,.1);color:var(--accent)"><i class="fas fa-building"></i></div>
+          <div class="stat-val" id="s-orgs">—</div>
+          <div class="stat-label">Total Orgs</div>
+          <div class="stat-sub" id="s-active-orgs" style="color:var(--success)"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(124,58,237,.1);color:#a78bfa"><i class="fas fa-users"></i></div>
+          <div class="stat-val" id="s-users">—</div>
+          <div class="stat-label">Total Users</div>
+          <div class="stat-sub" id="s-active-users" style="color:var(--muted)"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(0,230,118,.1);color:var(--success)"><i class="fas fa-cash-register"></i></div>
+          <div class="stat-val" id="s-sales">—</div>
+          <div class="stat-label">Total Sales</div>
+          <div class="stat-sub" id="s-week-sales" style="color:var(--muted)"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(255,171,0,.1);color:var(--warn)"><i class="fas fa-code-branch"></i></div>
+          <div class="stat-val" id="s-branches">—</div>
+          <div class="stat-label">Branches</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:rgba(255,59,92,.1);color:var(--danger)"><i class="fas fa-coins"></i></div>
+          <div class="stat-val" id="s-revenue">—</div>
+          <div class="stat-label">Revenue</div>
+        </div>
+      </div>
+
+      <div class="sec-head">
+        <h3><i class="fas fa-building" style="color:var(--accent)"></i> Organisations</h3>
+        <div class="sec-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadOrgs()"><i class="fas fa-sync-alt"></i></button>
+          <button class="btn btn-primary btn-sm" onclick="openCreateModal()">
+            <i class="fas fa-plus"></i> New Org
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="search-bar">
+          <input type="text" id="searchInput" placeholder="Search organisations…" oninput="filterTable()" />
+        </div>
+        <div class="table-wrap">
+          <div id="tableBody">
+            <div class="empty-state"><div class="spinner"></div><p style="margin-top:16px">Loading…</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PERFORMANCE TAB ─────────────────────────────── -->
+    <div id="tab-performance" class="tab-panel">
+      <div class="sec-head">
+        <h3><i class="fas fa-heartbeat" style="color:var(--success)"></i> System Health</h3>
+        <button class="btn btn-ghost btn-sm" onclick="loadHealth()"><i class="fas fa-sync-alt"></i></button>
+      </div>
+      <div class="health-grid" id="healthGrid">
+        <div class="empty-state"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- ── REQUESTS TAB ────────────────────────────────── -->
+    <div id="tab-requests" class="tab-panel">
+      <div class="sec-head">
+        <h3><i class="fas fa-stream" style="color:var(--accent2)"></i> Recent API Requests</h3>
+        <div class="sec-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadRequests()"><i class="fas fa-sync-alt"></i></button>
+        </div>
+      </div>
+      <div class="card" style="padding:14px;">
+        <div id="reqList">
+          <div class="empty-state"><p>No requests logged yet this session.</p></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /appShell -->
+
+<!-- ── CREATE ORG MODAL ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">➕ New Organisation</div>
+      <button class="modal-close" onclick="closeCreateModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="f-row">
+        <div class="f-group"><label>Org Name *</label><input id="cName" placeholder="Acme Store" /></div>
+        <div class="f-group"><label>Currency</label>
+          <select id="cCurrency">
+            <option value="ETB">ETB — Ethiopian Birr</option>
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="KES">KES — Kenyan Shilling</option>
+            <option value="NGN">NGN — Nigerian Naira</option>
+            <option value="ZAR">ZAR — South African Rand</option>
+          </select>
+        </div>
+      </div>
+      <div class="f-row">
+        <div class="f-group"><label>Admin Email *</label><input id="cEmail" type="email" placeholder="admin@store.com" /></div>
+        <div class="f-group"><label>Admin Password *</label><input id="cPass" type="password" placeholder="min 8 chars" /></div>
+      </div>
+      <div class="f-row">
+        <div class="f-group"><label>Admin Name</label><input id="cAdminName" placeholder="Store Admin" /></div>
+        <div class="f-group"><label>Plan</label>
+          <select id="cPlan">
+            <option value="basic">Basic</option>
+            <option value="pro">Pro</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+        <div class="f-group"><label>Tenant Mode</label>
+          <select id="cTenantType">
+            <option value="retail">Retail</option>
+            <option value="pharma">Pharmacy</option>
+            <option value="cosmetics">Cosmetics</option>
+            <option value="supermarket">Supermarket</option>
+          </select>
+        </div>
+      </div>
+      <div class="f-row">
+        <div class="f-group"><label>Tax %</label><input id="cTax" type="number" value="0" min="0" max="100" /></div>
+        <div class="f-group"><label>Brand Color</label><input id="cColor" type="color" value="#2563EB" style="height:42px;padding:4px;" /></div>
+      </div>
+      <div class="f-group"><label>Internal Notes</label><textarea id="cNotes" placeholder="Anything to remember about this org…"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreate()"><i class="fas fa-plus"></i> Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── EDIT ORG MODAL ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">✏️ Edit Organisation</div>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eId" />
+      <div class="f-row">
+        <div class="f-group"><label>Org Name</label><input id="eName" /></div>
+        <div class="f-group"><label>Currency</label>
+          <select id="eCurrency">
+            <option value="ETB">ETB</option><option value="USD">USD</option>
+            <option value="EUR">EUR</option><option value="GBP">GBP</option>
+            <option value="KES">KES</option><option value="NGN">NGN</option>
+            <option value="ZAR">ZAR</option>
+          </select>
+        </div>
+      </div>
+      <div class="f-row">
+        <div class="f-group"><label>Plan</label>
+          <select id="ePlan">
+            <option value="basic">Basic</option>
+            <option value="pro">Pro</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+        <div class="f-group"><label>Tax %</label><input id="eTax" type="number" min="0" max="100" /></div>
+        <div class="f-group"><label>Tenant Mode</label>
+          <select id="eTenantType">
+            <option value="retail">Retail</option>
+            <option value="pharma">Pharmacy</option>
+            <option value="cosmetics">Cosmetics</option>
+            <option value="supermarket">Supermarket</option>
+          </select>
+        </div>
+      </div>
+      <div class="f-group"><label>Internal Notes</label><textarea id="eNotes"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEdit()"><i class="fas fa-save"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── FEATURES MODAL ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="featModal">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <div class="modal-title">🔧 Feature Permissions — <span id="featOrgName" style="color:var(--accent)"></span></div>
+      <button class="modal-close" onclick="closeFeatModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="featOrgId" />
+
+      <div class="feat-section">
+        <div class="feat-section-title">Core Features</div>
+        <div class="feat-grid">
+          <label class="feat-toggle" id="ft-branches">
+            <span class="feat-toggle-label"><i class="fas fa-code-branch"></i> Branch Management</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-branches" onchange="updateFeatToggle('branches',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-multi_user">
+            <span class="feat-toggle-label"><i class="fas fa-users"></i> Multiple Users</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-multi_user" onchange="updateFeatToggle('multi_user',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-reports">
+            <span class="feat-toggle-label"><i class="fas fa-chart-bar"></i> Reports</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-reports" onchange="updateFeatToggle('reports',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-expenses">
+            <span class="feat-toggle-label"><i class="fas fa-receipt"></i> Expenses</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-expenses" onchange="updateFeatToggle('expenses',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-suppliers">
+            <span class="feat-toggle-label"><i class="fas fa-truck"></i> Suppliers</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-suppliers" onchange="updateFeatToggle('suppliers',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-export">
+            <span class="feat-toggle-label"><i class="fas fa-file-export"></i> Data Export</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-export" onchange="updateFeatToggle('export',this)"><span class="toggle-track"></span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="feat-section">
+        <div class="feat-section-title">AI & Scanning</div>
+        <div class="feat-grid">
+          <label class="feat-toggle" id="ft-ai_scan">
+            <span class="feat-toggle-label"><i class="fas fa-robot"></i> AI Smart Scan</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-ai_scan" onchange="updateFeatToggle('ai_scan',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-fast_scan">
+            <span class="feat-toggle-label"><i class="fas fa-bolt"></i> Fast Scan</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-fast_scan" onchange="updateFeatToggle('fast_scan',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-smart_scan">
+            <span class="feat-toggle-label"><i class="fas fa-magic"></i> Bulk Smart Scan</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-smart_scan" onchange="updateFeatToggle('smart_scan',this)"><span class="toggle-track"></span></span>
+          </label>
+          <label class="feat-toggle" id="ft-phone_camera">
+            <span class="feat-toggle-label"><i class="fas fa-mobile-alt"></i> Phone Camera</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-phone_camera" onchange="updateFeatToggle('phone_camera',this)"><span class="toggle-track"></span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="feat-section">
+        <div class="feat-section-title">Notifications</div>
+        <div class="feat-grid">
+          <label class="feat-toggle" id="ft-push_notifications">
+            <span class="feat-toggle-label"><i class="fas fa-bell"></i> Push Notifications</span>
+            <span class="toggle-sw"><input type="checkbox" id="ff-push_notifications" onchange="updateFeatToggle('push_notifications',this)"><span class="toggle-track"></span></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="feat-section">
+        <div class="feat-section-title">Limits <span style="color:var(--muted);font-weight:400;">(0 = unlimited)</span></div>
+        <div class="limit-row">
+          <div class="limit-field">
+            <label>Max Branches</label>
+            <input type="number" id="ff-max_branches" min="0" placeholder="0 = unlimited" />
+            <div class="limit-hint">0 means no limit</div>
+          </div>
+          <div class="limit-field">
+            <label>Max Users</label>
+            <input type="number" id="ff-max_users" min="0" placeholder="0 = unlimited" />
+            <div class="limit-hint">0 means no limit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeFeatModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveFeatModal()"><i class="fas fa-save"></i> Save Permissions</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONFIRM MODAL ───────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <div class="confirm-icon" id="confirmIcon">⚠️</div>
+    <h3 id="confirmTitle"></h3>
+    <p  id="confirmMsg"></p>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-danger" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ───────────────────────────────────────────────────────────── -->
+<div id="toastContainer"></div>
+
+<script src="assets/js/config.js"></script>
+<script>
+function resolveSuperadminApiBase() {
+  const paramsApi = new URLSearchParams(window.location.search).get('api');
+  const configured = window.AppConfig?.API_BASE_URL;
+  const saved = localStorage.getItem('xpos_api_base_url');
+  const candidate = paramsApi || configured || saved || 'https://x-pos.onrender.com/api';
+  return candidate.replace(/\/+$/, '');
+}
+const API = resolveSuperadminApiBase();
+localStorage.setItem('xpos_api_base_url', API);
+let token   = '';
+let allOrgs = [];
+
+// ─── Login ────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('loginErr');
+  err.style.display = 'none';
+  btn.disabled = true; btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;"></div>';
+  try {
+    const res = await fetch(`${API}/superadmin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email:    document.getElementById('loginEmail').value.trim(),
+        password: document.getElementById('loginPass').value,
+      }),
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Login failed'); }
+    const d = await res.json();
+    token = d.access_token;
+    localStorage.setItem('xpos_superadmin_token', token);
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appShell').classList.add('active');
+    bootPanel();
+  } catch (e) {
+    const msg = (e && e.message) || 'Login failed';
+    if (msg.includes('Failed to fetch') || e instanceof TypeError) {
+      err.textContent = `Cannot reach the backend at ${API}. If the backend log shows 401/Unauthorized, verify SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD. If the browser says Failed to fetch, also add this frontend origin (${window.location.origin}) to FRONTEND_URL or ALLOWED_ORIGINS on the backend.`;
+    } else {
+      err.textContent = msg;
+    }
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+  }
+}
+
+function doLogout() {
+  token = ''; allOrgs = [];
+  localStorage.removeItem('xpos_superadmin_token');
+  document.getElementById('appShell').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPass').value = '';
+}
+
+// ─── API helper ───────────────────────────────────────────────────────────────
+async function sa(path, method = 'GET', body = null) {
+  const opts = { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${API}/superadmin${path}`, opts);
+  if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${res.status}`); }
+  return res.json();
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+function bootPanel() {
+  loadStats();
+  loadOrgs();
+  checkHealth();
+  setInterval(checkHealth, 30000);
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  el.classList.add('active');
+  if (name === 'performance') loadHealth();
+  if (name === 'requests')    loadRequests();
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const s = await sa('/stats');
+    document.getElementById('s-orgs').textContent    = s.total_orgs ?? '—';
+    document.getElementById('s-active-orgs').textContent = s.active_orgs + ' active';
+    document.getElementById('s-users').textContent   = s.total_users ?? '—';
+    document.getElementById('s-active-users').textContent = s.active_users + ' active';
+    document.getElementById('s-sales').textContent   = s.total_sales ?? '—';
+    document.getElementById('s-week-sales').textContent = s.sales_this_week + ' this week';
+    document.getElementById('s-branches').textContent = s.total_branches ?? '—';
+    const rev = s.total_revenue ?? 0;
+    document.getElementById('s-revenue').textContent = rev >= 1000 ? (rev/1000).toFixed(1)+'K' : rev.toFixed(0);
+  } catch (_) {}
+}
+
+// ─── Orgs table ───────────────────────────────────────────────────────────────
+async function loadOrgs() {
+  document.getElementById('tableBody').innerHTML =
+    '<div class="empty-state"><div class="spinner"></div><p style="margin-top:16px">Loading…</p></div>';
+  try {
+    allOrgs = await sa('/organizations');
+    renderTable(allOrgs);
+    loadStats();
+  } catch (e) {
+    document.getElementById('tableBody').innerHTML =
+      `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${esc(e.message)}</p></div>`;
+  }
+}
+
+function renderTable(orgs) {
+  if (!orgs.length) {
+    document.getElementById('tableBody').innerHTML =
+      '<div class="empty-state"><i class="fas fa-building"></i><p>No organisations yet</p></div>';
+    return;
+  }
+  const rows = orgs.map(o => {
+    const f = o.features || {};
+    const statusBadge = o.is_active
+      ? '<span class="badge badge-green"><i class="fas fa-circle" style="font-size:6px"></i> Active</span>'
+      : '<span class="badge badge-red"><i class="fas fa-circle" style="font-size:6px"></i> Suspended</span>';
+
+    const planColor = { basic:'badge-blue', pro:'badge-purple', enterprise:'badge-yellow' }[o.subscription_plan] || 'badge-blue';
+
+    // Show top features state as chips
+    const featureKeys = ['ai_scan','fast_scan','branches','reports','expenses'];
+    const chips = featureKeys.map(k =>
+      `<span class="feat-chip ${f[k] !== false ? 'on' : 'off'}">${k.replace('_',' ')}</span>`
+    ).join('');
+
+    const limits = [];
+    if (f.max_branches > 0) limits.push(`${f.max_branches} branches`);
+    if (f.max_users > 0)    limits.push(`${f.max_users} users`);
+    const limitStr = limits.length ? `<div style="font-size:10px;color:var(--warn);margin-top:3px;font-family:var(--mono);">⚠ ${limits.join(' · ')}</div>` : '';
+
+    return `<tr>
+      <td>
+        <div class="org-name">${esc(o.name)}</div>
+        <div class="org-meta">${esc(o.tenant_type||'retail')} · ${esc(o.currency||'ETB')} · Tax ${o.tax_percentage||0}% · ${o.branch_count||0} branch · ${o.user_count||0} user</div>
+        ${o.notes ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;font-style:italic;">${esc(o.notes)}</div>` : ''}
+      </td>
+      <td>${statusBadge}</td>
+      <td><span class="badge ${planColor}">${o.subscription_plan||'basic'}</span></td>
+      <td>
+        <div class="feat-chips">${chips}</div>
+        ${limitStr}
+      </td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted);">${o.total_sales||0} sales</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn btn-outline btn-xs" onclick="openFeatModal('${o.id}')">
+            <i class="fas fa-sliders-h"></i> Perms
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="openEditModal('${o.id}')">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button class="btn btn-xs ${o.is_active ? 'btn-warn' : 'btn-success'}" onclick="toggleOrg('${o.id}','${esc(o.name)}',${o.is_active})">
+            ${o.is_active ? '<i class="fas fa-ban"></i>' : '<i class="fas fa-check"></i>'}
+          </button>
+          <button class="btn btn-danger btn-xs" onclick="confirmDelete('${o.id}','${esc(o.name)}')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tableBody').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Organisation</th>
+        <th>Status</th>
+        <th>Plan</th>
+        <th>Features</th>
+        <th>Sales</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function filterTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  renderTable(q ? allOrgs.filter(o => o.name.toLowerCase().includes(q)) : allOrgs);
+}
+
+// ─── Create modal ─────────────────────────────────────────────────────────────
+function openCreateModal() {
+  ['cName','cEmail','cPass','cAdminName','cNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cTax').value = '0';
+  document.getElementById('cColor').value = '#2563EB';
+  document.getElementById('cPlan').value = 'basic';
+  document.getElementById('cCurrency').value = 'ETB';
+  document.getElementById('cTenantType').value = 'retail';
+  document.getElementById('createModal').classList.add('open');
+}
+function closeCreateModal() { document.getElementById('createModal').classList.remove('open'); }
+
+async function submitCreate() {
+  const name  = document.getElementById('cName').value.trim();
+  const email = document.getElementById('cEmail').value.trim();
+  const pass  = document.getElementById('cPass').value.trim();
+  if (!name || !email || !pass) { toast('Name, email and password are required', 'error'); return; }
+  try {
+    await sa('/organizations', 'POST', {
+      name, admin_email: email, admin_password: pass,
+      admin_name:        document.getElementById('cAdminName').value.trim() || 'Admin',
+      currency:          document.getElementById('cCurrency').value,
+      tax_percentage:    parseFloat(document.getElementById('cTax').value) || 0,
+      brand_color:       document.getElementById('cColor').value,
+      subscription_plan: document.getElementById('cPlan').value,
+      tenant_type:       document.getElementById('cTenantType').value,
+      notes:             document.getElementById('cNotes').value.trim(),
+    });
+    toast('Organisation created!', 'success');
+    closeCreateModal();
+    loadOrgs();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Edit modal ───────────────────────────────────────────────────────────────
+function openEditModal(id) {
+  const o = allOrgs.find(x => x.id === id);
+  if (!o) return;
+  document.getElementById('eId').value       = o.id;
+  document.getElementById('eName').value     = o.name || '';
+  document.getElementById('eCurrency').value = o.currency || 'ETB';
+  document.getElementById('ePlan').value     = o.subscription_plan || 'basic';
+  document.getElementById('eTax').value      = o.tax_percentage || 0;
+  document.getElementById('eTenantType').value = o.tenant_type || 'retail';
+  document.getElementById('eNotes').value    = o.notes || '';
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() { document.getElementById('editModal').classList.remove('open'); }
+
+async function submitEdit() {
+  const id = document.getElementById('eId').value;
+  try {
+    await sa(`/organizations/${id}`, 'PUT', {
+      name:              document.getElementById('eName').value.trim(),
+      currency:          document.getElementById('eCurrency').value,
+      subscription_plan: document.getElementById('ePlan').value,
+      tax_percentage:    parseFloat(document.getElementById('eTax').value) || 0,
+      tenant_type:       document.getElementById('eTenantType').value,
+      notes:             document.getElementById('eNotes').value.trim(),
+    });
+    toast('Organisation updated!', 'success');
+    closeEditModal();
+    loadOrgs();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Features modal ───────────────────────────────────────────────────────────
+let _featState = {};   // current in-memory feature state while modal is open
+
+function openFeatModal(id) {
+  const o = allOrgs.find(x => x.id === id);
+  if (!o) return;
+  _featState = { ...o.features };
+  document.getElementById('featOrgId').value  = id;
+  document.getElementById('featOrgName').textContent = o.name;
+
+  // Set toggle states
+  const boolKeys = ['branches','multi_user','ai_scan','fast_scan','smart_scan',
+                    'reports','expenses','suppliers','export','push_notifications','phone_camera'];
+  boolKeys.forEach(k => {
+    const inp = document.getElementById(`ff-${k}`);
+    const row = document.getElementById(`ft-${k}`);
+    if (!inp) return;
+    const val = _featState[k] !== false;
+    inp.checked = val;
+    if (row) {
+      row.classList.toggle('enabled',  val);
+      row.classList.toggle('disabled', !val);
+    }
+  });
+
+  document.getElementById('ff-max_branches').value = _featState.max_branches ?? 0;
+  document.getElementById('ff-max_users').value    = _featState.max_users    ?? 0;
+
+  document.getElementById('featModal').classList.add('open');
+}
+
+function updateFeatToggle(key, inp) {
+  _featState[key] = inp.checked;
+  const row = document.getElementById(`ft-${key}`);
+  if (row) {
+    row.classList.toggle('enabled',  inp.checked);
+    row.classList.toggle('disabled', !inp.checked);
+  }
+}
+
+function closeFeatModal() { document.getElementById('featModal').classList.remove('open'); }
+
+async function saveFeatModal() {
+  const id = document.getElementById('featOrgId').value;
+  _featState.max_branches = parseInt(document.getElementById('ff-max_branches').value) || 0;
+  _featState.max_users    = parseInt(document.getElementById('ff-max_users').value)    || 0;
+  try {
+    await sa(`/organizations/${id}/features`, 'PATCH', _featState);
+    toast('Permissions saved!', 'success');
+    closeFeatModal();
+    loadOrgs();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ─── Toggle / Delete ──────────────────────────────────────────────────────────
+function toggleOrg(id, name, isActive) {
+  const action = isActive ? 'Suspend' : 'Activate';
+  const msg    = isActive
+    ? `Suspending "${name}" will block all logins for this organisation.`
+    : `Activating "${name}" will restore full access.`;
+  showConfirm(isActive ? '⚠️' : '✅', `${action} "${name}"?`, msg, async () => {
+    try {
+      await sa(`/organizations/${id}/toggle`, 'PATCH');
+      toast(`Organisation ${action.toLowerCase()}d.`, isActive ? 'warn' : 'success');
+      loadOrgs();
+    } catch (e) { toast(e.message, 'error'); }
+  });
+}
+
+function confirmDelete(id, name) {
+  showConfirm('🗑️', `Delete "${name}"?`,
+    'This permanently deletes the organisation, all branches, users and data. This cannot be undone.',
+    async () => {
+      try {
+        await sa(`/organizations/${id}`, 'DELETE');
+        toast('Organisation deleted.', 'error');
+        loadOrgs();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+  );
+}
+
+// ─── Health ───────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const h = await sa('/health');
+    const dot = document.getElementById('healthDot');
+    dot.className = `health-dot ${h.db_ok ? 'ok' : 'degraded'}`;
+    dot.title = `DB: ${h.db_ok ? 'OK' : 'ERROR'} (${h.db_ms}ms)`;
+  } catch (_) {}
+}
+
+async function loadHealth() {
+  const grid = document.getElementById('healthGrid');
+  grid.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  try {
+    const h = await sa('/health');
+    const s = await sa('/stats');
+    grid.innerHTML = `
+      <div class="health-card">
+        <div class="health-card-title">Database</div>
+        <div class="health-val ${h.db_ok ? 'ok' : 'bad'}">${h.db_ok ? 'Online' : 'Error'}</div>
+        <div class="health-desc">Response: ${h.db_ms}ms</div>
+      </div>
+      <div class="health-card">
+        <div class="health-card-title">Active Organisations</div>
+        <div class="health-val ok">${s.active_orgs} / ${s.total_orgs}</div>
+        <div class="health-desc">${s.total_orgs - s.active_orgs} suspended</div>
+      </div>
+      <div class="health-card">
+        <div class="health-card-title">Active Users</div>
+        <div class="health-val ok">${s.active_users} / ${s.total_users}</div>
+        <div class="health-desc">across all orgs</div>
+      </div>
+      <div class="health-card">
+        <div class="health-card-title">Total Branches</div>
+        <div class="health-val ok">${s.total_branches}</div>
+        <div class="health-desc">across all orgs</div>
+      </div>
+      <div class="health-card">
+        <div class="health-card-title">Sales This Week</div>
+        <div class="health-val ok">${s.sales_this_week}</div>
+        <div class="health-desc">${s.total_sales} all-time</div>
+      </div>
+      <div class="health-card">
+        <div class="health-card-title">Total Revenue</div>
+        <div class="health-val ok">${s.total_revenue?.toLocaleString()}</div>
+        <div class="health-desc">across all paid sales</div>
+      </div>
+    `;
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${esc(e.message)}</p></div>`;
+  }
+}
+
+// ─── Requests ─────────────────────────────────────────────────────────────────
+async function loadRequests() {
+  const el = document.getElementById('reqList');
+  el.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  try {
+    const reqs = await sa('/requests');
+    if (!reqs.length) {
+      el.innerHTML = '<div class="empty-state"><p>No requests logged yet this session.</p></div>';
+      return;
+    }
+    el.innerHTML = '<div class="req-list">' + reqs.map(r => {
+      const ts = r.ts ? r.ts.slice(11,19) : '';
+      const stClass = r.status >= 400 ? 'err' : 'ok';
+      return `<div class="req-row">
+        <span class="req-ts">${ts}</span>
+        <span class="req-meth ${r.method}">${r.method}</span>
+        <span class="req-path">${esc(r.path)}</span>
+        <span class="req-status ${stClass}">${r.status}</span>
+        <span class="req-ms">${r.ms}ms</span>
+      </div>`;
+    }).join('') + '</div>';
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><p>${esc(e.message)}</p></div>`;
+  }
+}
+
+// ─── Confirm modal ────────────────────────────────────────────────────────────
+function showConfirm(icon, title, msg, cb) {
+  document.getElementById('confirmIcon').textContent  = icon;
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent   = msg;
+  const ok = document.getElementById('confirmOk');
+  ok.onclick = () => { closeConfirm(); cb(); };
+  document.getElementById('confirmModal').classList.add('open');
+}
+function closeConfirm() { document.getElementById('confirmModal').classList.remove('open'); }
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':type==='error'?'times-circle':type==='warn'?'exclamation-triangle':'info-circle'}"></i> ${esc(msg)}`;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Restore token when redirected from the normal login page after a successful superadmin login.
+const savedSuperToken = localStorage.getItem('xpos_superadmin_token');
+if (savedSuperToken) {
+  token = savedSuperToken;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appShell').classList.add('active');
+  bootPanel();
+}
+</script>
+</body>
+</html>
