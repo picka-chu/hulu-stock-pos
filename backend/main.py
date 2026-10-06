@@ -249,6 +249,11 @@ async def log_requests(request: Request, call_next):
         ms = round((time.time() - start) * 1000)
         logger.info(f"{request.method} {request.url.path} → {response.status_code} ({ms}ms)")
         return response
+    except HTTPException:
+        # Let FastAPI's HTTPException handler build the proper status/JSON
+        # (e.g. the 503 from superadmin stats on DB failure). Swallowing it
+        # here turns every deliberate error into a misleading 500.
+        raise
     except Exception as e:
         logger.error(f"Unhandled: {request.method} {request.url.path} — {e}", exc_info=True)
         return JSONResponse(

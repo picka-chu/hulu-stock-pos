@@ -329,7 +329,7 @@ async def platform_stats(_: dict = Depends(require_superadmin)):
         _salog.getLogger("superadmin").exception("Platform stats database request failed: %s", exc)
         raise HTTPException(
             status_code=503,
-            detail="Superadmin statistics are temporarily unavailable because the database connection failed.",
+            detail="Database is unreachable (DNS/connection failed). Check SUPABASE_URL on Render is exactly https://<project-ref>.supabase.co and that the Supabase project is not paused.",
         )
 
     orgs_data    = orgs.data or []

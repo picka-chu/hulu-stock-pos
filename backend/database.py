@@ -59,6 +59,8 @@ async def get_supabase_client() -> Optional[Client]:
         logger.info(f"[DB] SUPABASE_SERVICE_KEY set: {bool(SUPABASE_SERVICE_KEY)}")
 
         parsed = urlparse(SUPABASE_URL)
+        if parsed.hostname:
+            logger.info(f"[DB] Supabase host: {parsed.hostname}")
         if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
             _last_connection_error = "Supabase environment variables are missing"
             logger.error("[DB] Missing SUPABASE_URL or server-side Supabase key")
@@ -67,6 +69,11 @@ async def get_supabase_client() -> Optional[Client]:
         if parsed.scheme not in ("http", "https") or not parsed.hostname or "YOUR_PROJECT" in parsed.hostname:
             _last_connection_error = "SUPABASE_URL is invalid; use https://<project-ref>.supabase.co"
             logger.error("[DB] Invalid SUPABASE_URL configuration")
+            OFFLINE_MODE = True
+            return None
+        if parsed.path not in ("", "/") or parsed.query or parsed.port:
+            _last_connection_error = "SUPABASE_URL must be the bare project URL https://<project-ref>.supabase.co (no path, query, or port)"
+            logger.error(f"[DB] SUPABASE_URL has unexpected path/query/port: {SUPABASE_URL!r}. Use the bare https://<project-ref>.supabase.co from Supabase Settings → API.")
             OFFLINE_MODE = True
             return None
 
