@@ -71,7 +71,9 @@ async def _get_sale_items_with_names(client, sale_id: str) -> list:
                 grouped[key] = {**row, "item_name": name}
                 continue
             g = grouped[key]
-            g["quantity"] = int(g.get("quantity") or 0) + int(row.get("quantity") or 0)
+            # Quantities are NUMERIC (fractional split rows, e.g. 1.5 boxes
+            # across batches) — never truncate with int().
+            g["quantity"] = round(float(g.get("quantity") or 0) + float(row.get("quantity") or 0), 6)
             g["base_quantity"] = float(g.get("base_quantity") or 0) + float(row.get("base_quantity") or row.get("quantity") or 0)
             g["total"] = float(g.get("total") or 0) + float(row.get("total") or 0)
             # Keep cost_price as weighted average per base unit for backward-compatible response shape.

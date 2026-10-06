@@ -32,13 +32,19 @@ async def _deduct_batches_fefo(client, item: dict, quantity: int, org_id: str, b
     if prev_item_qty < quantity:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient stock")
 
+    from datetime import date as _date
+    _today = _date.today().isoformat()
+    _q = client.table("item_batches") \
+        .select("id,batch_number,expiry_date,quantity_on_hand") \
+        .eq("organization_id", org_id) \
+        .eq("item_id", item_id) \
+        .eq("is_active", True) \
+        .gt("quantity_on_hand", 0) \
+        .or_(f"expiry_date.is.null,expiry_date.gt.{_today}")
+    if branch_id:
+        _q = _q.eq("branch_id", str(branch_id))
     resp = await asyncio.to_thread(
-        lambda: client.table("item_batches")
-            .select("id,batch_number,expiry_date,quantity_on_hand")
-            .eq("organization_id", org_id)
-            .eq("item_id", item_id)
-            .eq("is_active", True)
-            .gt("quantity_on_hand", 0)
+        lambda: _q
             .order("expiry_date", desc=False, nullsfirst=False)
             .order("received_at", desc=False)
             .order("id", desc=False)
@@ -1121,6 +1127,14 @@ async def update_stock(
                 "unit_cost": body.get("unit_cost") or item.get("buy_price"),
                 "supplier_id": body.get("supplier_id") or item.get("supplier_id"), "is_active": True,
             })
+            # Re-derive from the ledger (same as add) so the projection cannot drift.
+            try:
+                _set_sync = await asyncio.to_thread(
+                    lambda: _sc.rpc("sync_item_stock_from_batches", {"p_item_id": str(item_id)}).execute()
+                )
+                new_quantity = int(_set_sync.data)
+            except (TypeError, ValueError):
+                pass
         else:  # new_quantity < current_qty
             quantity = current_qty - new_quantity
             new_quantity = await _deduct_batches_fefo(
@@ -1214,7 +1228,7 @@ async def bulk_stock_adjust(
             continue
         try:
             r = await asyncio.to_thread(
-                lambda iid=item_id: client.table("items").select("id,name,stock_quantity")
+                lambda iid=item_id: client.table("items").select("id,name,stock_quantity,buy_price")
                     .eq("id", iid).eq("organization_id", org_id)
                     .eq("is_active", True).limit(1).execute()
             )
@@ -1237,9 +1251,16 @@ async def bulk_stock_adjust(
                     "id": batch_id, "organization_id": org_id, "branch_id": current_user.get("branch_id"),
                     "item_id": item_id, "batch_number": adj.get("batch_number"),
                     "expiry_date": adj.get("expiry_date"), "received_quantity": receipt_qty,
-                    "quantity_on_hand": receipt_qty, "unit_cost": adj.get("unit_cost"),
+                    "quantity_on_hand": receipt_qty,
+                    "unit_cost": adj.get("unit_cost") if adj.get("unit_cost") not in (None, "") else item.get("buy_price"),
                     "supplier_id": adj.get("supplier_id"), "is_active": True,
                 })
+                # Re-derive the projection from the ledger so it cannot drift.
+                try:
+                    _sync = await asyncio.to_thread(lambda iid=item_id: client.rpc("sync_item_stock_from_batches", {"p_item_id": iid}).execute())
+                    new_qty = int(_sync.data)
+                except (TypeError, ValueError):
+                    pass
             elif atype == "subtract" or (atype == "set" and new_qty < prev):
                 deduct_qty = qty if atype == "subtract" else prev - new_qty
                 new_qty = await _deduct_batches_fefo(

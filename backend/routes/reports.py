@@ -85,7 +85,7 @@ async def get_daily_sales_report(
     try:
         q = client.table("sales").select(
             "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
-        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded"]).gte(
+        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
 
@@ -148,7 +148,7 @@ async def get_monthly_sales_report(
     try:
         q = client.table("sales").select(
             "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
-        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded"]).gte(
+        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         )
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
@@ -215,7 +215,7 @@ async def get_sales_by_item(
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
         q = client.table("sales").select("id").eq(
             "organization_id", org_id
-        ).in_("payment_status", ["paid", "refunded"]).gte(
+        ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
         if effective_branch:
@@ -423,7 +423,7 @@ async def get_profit_report(
         # Get sales IDs
         q = client.table("sales").select("id").eq(
             "organization_id", org_id
-        ).in_("payment_status", ["paid", "refunded"]).gte(
+        ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
@@ -537,7 +537,13 @@ async def get_stock_valuation(
         return {"items": [], "total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0}
 
     try:
-        effective_branch = branch_id if branch_id and branch_id not in ("undefined","") else current_user.get("branch_id")
+        from middleware.auth import verify_branch_in_org
+        if branch_id and branch_id not in ("undefined", "", "null"):
+            if not await verify_branch_in_org(branch_id, str(org_id)):
+                raise HTTPException(status_code=404, detail="Branch not found")
+            effective_branch = branch_id
+        else:
+            effective_branch = current_user.get("branch_id")
 
         qb = client.table("item_batches").select(
             "item_id, quantity_on_hand, unit_cost, branch_id, batch_number, expiry_date"
@@ -575,7 +581,19 @@ async def get_stock_valuation(
             cat_names = {r["id"]: r["name"] for r in (cr.data or [])}
 
         agg = defaultdict(lambda: {"qty":0,"cost":0.0,"batches":0})
+        expired_qty = 0
+        expired_cost = 0.0
+        from datetime import date as _vdate
+        _vtoday = _vdate.today().isoformat()
         for b in batches:
+            # Expired lots are unsellable (sale RPC blocks expiry <= today);
+            # value them separately instead of mixing into sellable stock.
+            _exp = b.get("expiry_date")
+            if _exp and str(_exp) <= _vtoday:
+                _eq = int(b.get("quantity_on_hand") or 0)
+                expired_qty += _eq
+                expired_cost += _eq * float(b.get("unit_cost") or 0)
+                continue
             iid = b.get("item_id")
             qty = int(b.get("quantity_on_hand") or 0)
             agg[iid]["qty"] += qty
@@ -602,7 +620,9 @@ async def get_stock_valuation(
             "items": rows,
             "total_cost_value": round(total_cost,2),
             "total_sell_value": round(total_sell,2),
-            "potential_profit": round(total_sell-total_cost,2)
+            "potential_profit": round(total_sell-total_cost,2),
+            "expired_quantity": expired_qty,
+            "expired_cost_value": round(expired_cost,2)
         }
     except Exception as e:
         logger.error(f"Stock valuation error: {e}")
@@ -637,7 +657,7 @@ async def get_sales_by_branch(
         # Get sales in period
         qs = client.table("sales").select("branch_id, net_amount").eq(
             "organization_id", org_id
-        ).in_("payment_status", ["paid", "refunded"]).gte(
+        ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
         resp_s = await asyncio.to_thread(lambda: qs.execute())
@@ -696,7 +716,7 @@ async def get_sales_export(
 
         q = client.table("sales").select("*") \
             .eq("organization_id", org_id) \
-            .in_("payment_status", ["paid", "refunded"]) \
+            .in_("payment_status", ["paid", "refunded", "returned", "partial_return"]) \
             .gte("created_at", start_date.isoformat()) \
             .lte("created_at", f"{end_date.isoformat()}T23:59:59")
 

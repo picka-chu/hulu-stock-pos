@@ -2592,20 +2592,20 @@ VAPID_SUBJECT=mailto:<a href="/cdn-cgi/l/email-protection" class="__cf_email__" 
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Cost *</label>
+                            <label class="form-label">Buy Price *</label>
                             <input type="number" id="itemBuyPrice" name="xpos_item_bp" class="form-input" step="0.01" min="0" required autocomplete="off">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Retail Price *</label>
+                            <label class="form-label">Sell Price *</label>
                             <input type="number" id="itemSellPrice" name="xpos_item_sp" class="form-input" step="0.01" min="0" required autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Stock Quantity</label>
-                            <input type="number" id="itemStock" name="xpos_item_stk" class="form-input" min="0" value="0" autocomplete="off">
+                            <input type="number" id="itemStock" name="xpos_item_stk" class="form-input" min="0" step="1" value="0" autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Min Stock Level</label>
-                            <input type="number" id="itemMinStock" name="xpos_item_msk" class="form-input" min="0" value="10" autocomplete="off">
+                            <input type="number" id="itemMinStock" name="xpos_item_msk" class="form-input" min="0" step="1" value="10" autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Expiry Date</label>
@@ -2640,8 +2640,8 @@ VAPID_SUBJECT=mailto:<a href="/cdn-cgi/l/email-protection" class="__cf_email__" 
                                 <div class="pharma-card-title"><div><strong>Basic Information</strong><span>What medicine is this?</span></div></div>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div class="form-group"><label class="form-label">Manufacturer</label><input type="text" id="itemBrandName" class="form-input" placeholder="e.g. GSK, Pfizer" autocomplete="off"></div>
-                                    <div class="form-group"><label class="form-label">Dosage Form</label><select id="itemDosageForm" class="form-select"><option value="">Select form</option><option value="tablet">Tablet</option><option value="capsule">Capsule</option><option value="syrup">Syrup</option><option value="injection">Injection</option><option value="cream">Cream</option><option value="ointment">Ointment</option><option value="sachet">Sachet</option><option value="drops">Drops</option><option value="inhaler">Inhaler</option></select></div>
-                                    <div class="form-group"><label class="form-label">Requires Prescription</label><div class="rx-choice"><label><input type="radio" name="rxRequired" id="itemControlledSubstanceYes" value="yes"> Yes</label><label><input type="radio" name="rxRequired" id="itemControlledSubstanceNo" value="no" checked> No</label></div><input type="checkbox" id="itemControlledSubstance" style="display:none;"></div>
+                                    <div class="form-group"><label class="form-label">Dosage Form</label><select id="itemDosageForm" class="form-select"><option value="">Select form</option><option value="tablet">Tablet</option><option value="capsule">Capsule</option><option value="syrup">Syrup</option><option value="suspension">Suspension</option><option value="solution">Solution</option><option value="powder">Powder</option><option value="injection">Injection</option><option value="ampoule">Ampoule</option><option value="cream">Cream</option><option value="ointment">Ointment</option><option value="suppository">Suppository</option><option value="sachet">Sachet</option><option value="drops">Drops</option><option value="inhaler">Inhaler</option></select></div>
+                                    <div class="form-group"><label class="form-label">Controlled Substance</label><div class="rx-choice"><label><input type="radio" name="rxRequired" id="itemControlledSubstanceYes" value="yes"> Yes</label><label><input type="radio" name="rxRequired" id="itemControlledSubstanceNo" value="no" checked> No</label></div><small class="pharma-help">Narcotics / controlled medicines flag — not a general prescription marker.</small><input type="checkbox" id="itemControlledSubstance" style="display:none;"></div>
                                     <div class="form-group"><label class="form-label">Generic / Chemical Name</label><input type="text" id="itemGenericName" class="form-input" placeholder="e.g. Paracetamol" autocomplete="off"></div>
                                     <div class="form-group"><label class="form-label">Strength</label><input type="text" id="itemStrength" class="form-input" placeholder="e.g. 500mg" autocomplete="off"></div>
                                 </div>
@@ -2661,10 +2661,9 @@ VAPID_SUBJECT=mailto:<a href="/cdn-cgi/l/email-protection" class="__cf_email__" 
                                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div class="form-group"><label class="form-label">Purchase Unit</label><select id="pharmaStockInputUnit" class="form-select"><option value="box">Box</option><option value="strip">Strip</option><option value="base">Base Unit</option><option value="carton">Carton</option></select></div>
                                     <div class="form-group"><label class="form-label">Quantity</label><input type="number" id="itemReceivedQty" class="form-input" min="0" step="1" value="0" placeholder="e.g. 20"></div>
-                                    <div class="form-group"><label class="form-label">Buying Price</label><input type="number" id="pharmaPurchaseCost" class="form-input" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 600"><small class="pharma-help" id="buyingPriceHelp">Price for selected purchase unit.</small></div>
+                                    <div class="form-group"><label class="form-label">Buying Price (per purchase unit)</label><input type="number" id="pharmaPurchaseCost" class="form-input" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 600"><small class="pharma-help" id="buyingPriceHelp">Price for selected purchase unit.</small></div>
                                     <div class="form-group"><label class="form-label">Batch Number</label><input type="text" id="pharmaBatchNumber" class="form-input" placeholder="LOTX12345-20-06-2026" autocomplete="off"><label style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:#64748b;"><input type="checkbox" id="pharmaAutoBatch"> Auto batch number</label></div>
-                                    <div class="form-group"><label class="form-label">Expiry</label><input type="text" id="pharmaExpiryDate" class="form-input" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off"></div>
-                                    <div class="form-group"><label class="form-label">Manufacture Date</label><input type="text" id="pharmaManufactureDate" class="form-input" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off"></div>
+                                    <div class="form-group"><label class="form-label">Expiry *</label><input type="text" id="pharmaExpiryDate" class="form-input" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off"><small class="pharma-help">Required in pharmacy mode.</small></div>
                                     <div class="form-group"><label class="form-label">Low-stock Alert</label><div style="display:grid;grid-template-columns:1fr 120px;gap:8px;"><input type="number" id="pharmaMinStockLevel" class="form-input" min="0" step="1" value="10"><select id="pharmaMinStockUnit" class="form-select"><option value="base">Base</option><option value="strip">Strip</option><option value="box">Box</option><option value="carton">Carton</option></select></div></div>
                                 </div>
                                 <input type="hidden" id="itemPurchaseUnit"><input type="hidden" id="itemSaleUnit"><input type="hidden" id="itemPurchaseMultiplier" value="1"><input type="hidden" id="itemSaleMultiplier" value="1">

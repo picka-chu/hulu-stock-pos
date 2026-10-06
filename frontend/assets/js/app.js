@@ -2941,7 +2941,7 @@ function openItemModal(item = null) {
                       'itemStock','itemMinStock','itemExpiryDate','itemBatchNumber','itemDescription',
                       'itemBrand','itemGenericName','itemBrandName','itemStrength','itemPurchaseMultiplier',
                       'itemSaleMultiplier','itemReceivedQty','pharmaPurchaseCost','pharmaBatchNumber','pharmaExpiryDate',
-                      'pharmaManufactureDate','pharmaMinStockLevel','packBoxesPerCarton','packStripsPerBox','packUnitsPerStrip',
+                      'pharmaMinStockLevel','packBoxesPerCarton','packStripsPerBox','packUnitsPerStrip',
                       'tierSellPrice_carton','tierSellPrice_box','tierSellPrice_strip','tierSellPrice_base',
                       'tierBarcode_carton','tierBarcode_box','tierBarcode_strip','tierBarcode_base',
                       'itemBaseUnit','itemPurchaseUnit','itemSaleUnit'];
@@ -3070,27 +3070,65 @@ async function handleItemSubmit(e) {
     const itemId = document.getElementById('itemId').value;
 
     // ── Frontend validation ────────────────────────────────────────────────
+    const _fail = (msg, id) => {
+        showToast(msg, 'error');
+        const el = id && document.getElementById(id);
+        if (el) el.focus();
+    };
+    const _nameRaw = document.getElementById('itemName').value.trim();
+    if (!_nameRaw) { _fail('Item name is required', 'itemName'); return; }
     const _buyPrice = parseFloat(document.getElementById('itemBuyPrice').value);
     const _sellPrice = parseFloat(document.getElementById('itemSellPrice').value);
-    const _qty = document.getElementById('itemStock').value;
-    if (_buyPrice < 0) { showToast('Buy price cannot be negative', 'error'); return; }
-    if (_sellPrice < 0) { showToast('Sell price cannot be negative', 'error'); return; }
-    if (_qty && _qty.includes('.')) { showToast('Stock quantity must be a whole number', 'error'); return; }
+    const _qty = document.getElementById('itemStock').value.trim();
+    if (!Number.isFinite(_buyPrice) || _buyPrice < 0) { _fail('Buy price must be a number, 0 or more', 'itemBuyPrice'); return; }
+    if (!Number.isFinite(_sellPrice) || _sellPrice < 0) { _fail('Sell price must be a number, 0 or more', 'itemSellPrice'); return; }
+    if (_qty !== '' && !/^\d+$/.test(_qty)) { _fail('Stock quantity must be a whole number, 0 or more', 'itemStock'); return; }
+
+    const _pharmaMode = isCurrentItemFormPharmacyMode();
+    if (_pharmaMode) {
+        const _pcost = parseFloat(document.getElementById('pharmaPurchaseCost')?.value);
+        if (!Number.isFinite(_pcost) || _pcost < 0) { _fail('Purchase cost must be a number, 0 or more', 'pharmaPurchaseCost'); return; }
+        if (!itemId) {
+            const _rq = document.getElementById('itemReceivedQty')?.value.trim() || '';
+            if (_rq !== '' && !/^\d+$/.test(_rq)) { _fail('Received quantity must be a whole number, 0 or more', 'itemReceivedQty'); return; }
+        }
+        if (!document.getElementById('itemBaseUnit')?.value) { _fail('Base unit is required in pharmacy mode', 'itemBaseUnit'); return; }
+        // Expiry is mandatory for pharmacy items and must be a real, non-past date.
+        const _expRaw = document.getElementById('pharmaExpiryDate')?.value.trim() || '';
+        const _expIso = parseFlexibleDateInput(_expRaw);
+        const _expOk = _expIso && /^\d{4}-\d{2}-\d{2}$/.test(_expIso) && !isNaN(new Date(_expIso + 'T00:00:00').getTime());
+        if (!_expRaw || !_expOk) { _fail('Expiry date is required (DD-MM-YYYY) in pharmacy mode', 'pharmaExpiryDate'); return; }
+        const _todayIso = new Date().toISOString().slice(0, 10);
+        if (_expIso < _todayIso) { _fail('Expiry date cannot be in the past', 'pharmaExpiryDate'); return; }
+        // At least one packaging tier needs a sell price, and a tier barcode
+        // without its price would be silently dropped — block it explicitly.
+        let _tierPriced = 0;
+        for (const _lvl of ['base', 'strip', 'box', 'carton']) {
+            const _p = parseFloat(document.getElementById(`tierSellPrice_${_lvl}`)?.value);
+            const _bc = document.getElementById(`tierBarcode_${_lvl}`)?.value.trim() || '';
+            if (Number.isFinite(_p) && _p > 0) _tierPriced++;
+            else if (_bc) { _fail(`Add a sell price for the ${_lvl} tier (it has a barcode)`, `tierSellPrice_${_lvl}`); return; }
+            if (Number.isFinite(_p) && _p < 0) { _fail(`Sell price for ${_lvl} cannot be negative`, `tierSellPrice_${_lvl}`); return; }
+        }
+        if (!_tierPriced) { _fail('Add at least one tier sell price', 'tierSellPrice_base'); return; }
+        const _ms = document.getElementById('pharmaMinStockLevel')?.value.trim() || '';
+        if (_ms !== '' && !/^\d+$/.test(_ms)) { _fail('Min stock level must be a whole number, 0 or more', 'pharmaMinStockLevel'); return; }
+    }
 
     // Check if an external image URL was set by barcode lookup
     const preview = document.getElementById('imagePreview');
     const externalImageUrl = preview?.dataset?.externalImageUrl || null;
 
     const data = {
-        name: document.getElementById('itemName').value,
-        barcode: document.getElementById('itemBarcode').value || null,
+        name: _nameRaw,
+        barcode: document.getElementById('itemBarcode').value.trim() || null,
         brand: document.getElementById('itemBrandName')?.value || document.getElementById('itemBrand')?.value || null,
         category_id: document.getElementById('itemCategory').value || null,
         supplier_id: document.getElementById('itemSupplier').value || null,
         buy_price: _buyPrice,
         sell_price: _sellPrice,
-        stock_quantity: parseInt(_qty),
-        min_stock_level: parseInt(document.getElementById('itemMinStock').value),
+        stock_quantity: _qty === '' ? 0 : parseInt(_qty, 10),
+        min_stock_level: (() => { const _m = parseInt(document.getElementById('itemMinStock').value, 10); return Number.isFinite(_m) && _m >= 0 ? _m : 0; })(),
         expiry_date: parseFlexibleDateInput(document.getElementById('itemExpiryDate').value) || null,
         batch_number: (document.getElementById('itemAutoBatch')?.checked ? generateAutoBatchNumber() : document.getElementById('itemBatchNumber').value) || null,
         description: document.getElementById('itemDescription').value || null,
@@ -3170,6 +3208,8 @@ async function handleItemSubmit(e) {
         } catch (_) { /* barcode lookup failed — proceed normally */ }
     }
 
+    const _saveBtn = document.querySelector('#itemForm button[type="submit"]');
+    if (_saveBtn) _saveBtn.disabled = true;
     try {
         let savedItem;
         if (itemId) { 
@@ -3213,6 +3253,8 @@ async function handleItemSubmit(e) {
         } else {
             showToast(errorMessage, 'error');
         }
+    } finally {
+        if (_saveBtn) _saveBtn.disabled = false;
     }
 }
 
