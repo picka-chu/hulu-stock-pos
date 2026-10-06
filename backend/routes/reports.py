@@ -85,7 +85,7 @@ async def get_daily_sales_report(
     try:
         q = client.table("sales").select(
             "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
-        ).eq("organization_id", org_id).eq("payment_status", "paid").gte(
+        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
 
@@ -148,7 +148,7 @@ async def get_monthly_sales_report(
     try:
         q = client.table("sales").select(
             "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
-        ).eq("organization_id", org_id).eq("payment_status", "paid").gte(
+        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         )
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
@@ -215,7 +215,7 @@ async def get_sales_by_item(
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
         q = client.table("sales").select("id").eq(
             "organization_id", org_id
-        ).eq("payment_status", "paid").gte(
+        ).in_("payment_status", ["paid", "refunded"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
         if effective_branch:
@@ -423,7 +423,7 @@ async def get_profit_report(
         # Get sales IDs
         q = client.table("sales").select("id").eq(
             "organization_id", org_id
-        ).eq("payment_status", "paid").gte(
+        ).in_("payment_status", ["paid", "refunded"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
@@ -489,15 +489,34 @@ async def get_profit_report(
         breakdown.sort(key=lambda x: x["profit"], reverse=True)
 
         gross_profit = total_revenue - total_cost
+
+        # Operating expenses are not part of COGS. Keep the terminology explicit:
+        # Net operating profit = Gross Profit - Operating Expenses.
+        eq = client.table("expenses").select("amount").eq("organization_id", org_id).gte(
+            "expense_date", start_date.isoformat()
+        ).lte("expense_date", end_date.isoformat())
+        if effective_branch:
+            eq = eq.eq("branch_id", str(effective_branch))
+        er = await asyncio.to_thread(lambda: eq.execute())
+        operating_expenses = sum(float(r.get("amount") or 0) for r in (er.data or []))
+        net_operating_profit = gross_profit - operating_expenses
+
         profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
+        net_margin = (net_operating_profit / total_revenue * 100) if total_revenue > 0 else 0
 
         return {
             "start_date": start_date,
             "end_date": end_date,
+            "gross_sales": round(total_revenue, 2),
+            "net_sales": round(total_revenue, 2),
             "total_revenue": round(total_revenue, 2),
             "total_cost": round(total_cost, 2),
+            "cogs": round(total_cost, 2),
             "gross_profit": round(gross_profit, 2),
+            "operating_expenses": round(operating_expenses, 2),
+            "net_operating_profit": round(net_operating_profit, 2),
             "profit_margin": round(profit_margin, 2),
+            "net_margin": round(net_margin, 2),
             "breakdown": breakdown,
         }
     except Exception as e:
@@ -510,103 +529,84 @@ async def get_stock_valuation(
     branch_id: str = None,
     current_user: dict = Depends(require_manager)
 ):
-    """Get stock valuation report"""
+    """Batch-ledger stock valuation. Branch totals come from branch-owned batches."""
     from loguru import logger
     org_id = current_user["organization_id"]
-
     client = await get_supabase_client()
     if not client:
         return {"items": [], "total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0}
 
     try:
-        effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
-        q = client.table("items").select(
-            "id, name, barcode, stock_quantity, buy_price, sell_price, category_id"
-        ).eq("organization_id", org_id).eq("is_active", True).gt("stock_quantity", 0)
-        if effective_branch:
-            q = q.eq("branch_id", str(effective_branch))
-        resp = await asyncio.to_thread(lambda: q.execute())
-        rows = resp.data or []
-        item_ids = [r["id"] for r in rows]
-        batch_values = defaultdict(lambda: {"qty": 0, "cost_value": 0.0, "batch_count": 0})
-        # Per-base-unit sell price from packaging tiers (pharmacy items sell in
-        # strips/boxes/cartons; items.sell_price alone under-counts sell value).
-        tier_sell_price = {}
-        if item_ids:
-            for i in range(0, len(item_ids), 100):
-                chunk = item_ids[i:i + 100]
-                qt = client.table("item_packaging_tiers").select(
-                    "item_id, unit_level, base_unit_multiplier, selling_price"
-                ).eq("organization_id", org_id).in_("item_id", chunk)
-                resp_t = await asyncio.to_thread(lambda: qt.execute())
-                tiers_by_item = defaultdict(list)
-                for t in (resp_t.data or []):
-                    tiers_by_item[t.get("item_id")].append(t)
-                for iid, tiers in tiers_by_item.items():
-                    price = _tier_base_unit_price(tiers, "selling_price")
-                    if price is not None:
-                        tier_sell_price[iid] = price
-        if item_ids:
-            for i in range(0, len(item_ids), 100):
-                chunk = item_ids[i:i + 100]
-                qb = client.table("item_batches").select("item_id, quantity_on_hand, unit_cost") \
-                    .eq("organization_id", org_id).eq("is_active", True).gt("quantity_on_hand", 0).in_("item_id", chunk)
-                if effective_branch:
-                    qb = qb.eq("branch_id", str(effective_branch))
-                resp_b = await asyncio.to_thread(lambda: qb.execute())
-                for b in (resp_b.data or []):
-                    qty_b = int(b.get("quantity_on_hand") or 0)
-                    batch_values[b.get("item_id")]["qty"] += qty_b
-                    batch_values[b.get("item_id")]["cost_value"] += qty_b * float(b.get("unit_cost") or 0)
-                    batch_values[b.get("item_id")]["batch_count"] += 1
+        effective_branch = branch_id if branch_id and branch_id not in ("undefined","") else current_user.get("branch_id")
 
-        # Get category names
-        cat_ids = list({r["category_id"] for r in rows if r.get("category_id")})
+        qb = client.table("item_batches").select(
+            "item_id, quantity_on_hand, unit_cost, branch_id, batch_number, expiry_date"
+        ).eq("organization_id", org_id).eq("is_active", True).gt("quantity_on_hand", 0)
+        if effective_branch:
+            qb = qb.eq("branch_id", str(effective_branch))
+        batches_resp = await asyncio.to_thread(lambda: qb.execute())
+        batches = batches_resp.data or []
+
+        item_ids = list({b.get("item_id") for b in batches if b.get("item_id")})
+        if not item_ids:
+            return {"items": [], "total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0}
+
+        items_resp = await asyncio.to_thread(
+            lambda: client.table("items").select(
+                "id,name,barcode,buy_price,sell_price,category_id,base_unit_id"
+            ).eq("organization_id", org_id).eq("is_active", True).in_("id", item_ids).execute()
+        )
+        item_map = {r["id"]: r for r in (items_resp.data or [])}
+
+        tiers_by_item = defaultdict(list)
+        for i in range(0, len(item_ids), 100):
+            tr = await asyncio.to_thread(
+                lambda chunk=item_ids[i:i+100]: client.table("item_packaging_tiers").select(
+                    "item_id,unit_level,base_unit_multiplier,selling_price"
+                ).eq("organization_id", org_id).in_("item_id", chunk).execute()
+            )
+            for row in (tr.data or []):
+                tiers_by_item[row.get("item_id")].append(row)
+
+        cat_ids = list({r.get("category_id") for r in item_map.values() if r.get("category_id")})
         cat_names = {}
         if cat_ids:
-            qc = client.table("categories").select("id, name").in_("id", cat_ids)
-            resp_c = await asyncio.to_thread(lambda: qc.execute())
-            for c in (resp_c.data or []):
-                cat_names[c["id"]] = c["name"]
+            cr = await asyncio.to_thread(lambda: client.table("categories").select("id,name").in_("id",cat_ids).execute())
+            cat_names = {r["id"]: r["name"] for r in (cr.data or [])}
 
-        items = []
-        total_cost = 0.0
-        total_sell = 0.0
-        for row in rows:
-            batch_value = batch_values.get(row.get("id"), {})
-            qty = int(batch_value.get("qty") or row.get("stock_quantity", 0))
-            buy = float(row.get("buy_price", 0))
-            # Tier-derived per-base sell price when configured (pharmacy), else
-            # fall back to the item's base-unit sell_price (retail).
-            sell = tier_sell_price.get(row.get("id"))
-            if sell is None:
-                sell = float(row.get("sell_price", 0))
-            # Inventory valuation is batch-ledger based; buy_price is only a legacy fallback.
-            cost_val = float(batch_value.get("cost_value") or (qty * buy))
-            sell_val = qty * sell
-            total_cost += cost_val
-            total_sell += sell_val
-            items.append({
-                **row,
-                "stock_quantity": qty,
-                "batch_count": int(batch_value.get("batch_count") or 0),
-                "category_name": cat_names.get(row.get("category_id"), ""),
-                "total_cost_value": round(cost_val, 2),
-                "total_sell_value": round(sell_val, 2)
+        agg = defaultdict(lambda: {"qty":0,"cost":0.0,"batches":0})
+        for b in batches:
+            iid = b.get("item_id")
+            qty = int(b.get("quantity_on_hand") or 0)
+            agg[iid]["qty"] += qty
+            agg[iid]["cost"] += qty * float(b.get("unit_cost") or 0)
+            agg[iid]["batches"] += 1
+
+        rows=[]
+        total_cost=total_sell=0.0
+        for iid,v in agg.items():
+            item=item_map.get(iid,{})
+            tier_price=_tier_base_unit_price(tiers_by_item.get(iid,[]),"selling_price")
+            sell_per_base=tier_price if tier_price is not None else float(item.get("sell_price") or 0)
+            sell_value=v["qty"]*sell_per_base
+            total_cost += v["cost"]; total_sell += sell_value
+            rows.append({
+                "id": iid, "name": item.get("name","Unknown Item"),
+                "barcode": item.get("barcode"), "stock_quantity": v["qty"],
+                "batch_count": v["batches"], "category_name": cat_names.get(item.get("category_id"),""),
+                "total_cost_value": round(v["cost"],2),
+                "total_sell_value": round(sell_value,2)
             })
-
-        items.sort(key=lambda x: x["total_sell_value"], reverse=True)
-
+        rows.sort(key=lambda x:x["total_sell_value"], reverse=True)
         return {
-            "items": items,
-            "total_cost_value": round(total_cost, 2),
-            "total_sell_value": round(total_sell, 2),
-            "potential_profit": round(total_sell - total_cost, 2)
+            "items": rows,
+            "total_cost_value": round(total_cost,2),
+            "total_sell_value": round(total_sell,2),
+            "potential_profit": round(total_sell-total_cost,2)
         }
     except Exception as e:
         logger.error(f"Stock valuation error: {e}")
         return {"items": [], "total_cost_value": 0, "total_sell_value": 0, "potential_profit": 0}
-
 
 @router.get("/by-branch")
 async def get_sales_by_branch(
@@ -637,7 +637,7 @@ async def get_sales_by_branch(
         # Get sales in period
         qs = client.table("sales").select("branch_id, net_amount").eq(
             "organization_id", org_id
-        ).eq("payment_status", "paid").gte(
+        ).in_("payment_status", ["paid", "refunded"]).gte(
             "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
         ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
         resp_s = await asyncio.to_thread(lambda: qs.execute())
@@ -696,7 +696,7 @@ async def get_sales_export(
 
         q = client.table("sales").select("*") \
             .eq("organization_id", org_id) \
-            .eq("payment_status", "paid") \
+            .in_("payment_status", ["paid", "refunded"]) \
             .gte("created_at", start_date.isoformat()) \
             .lte("created_at", f"{end_date.isoformat()}T23:59:59")
 
