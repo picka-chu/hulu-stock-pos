@@ -94,7 +94,13 @@ BEGIN
         ));
         RAISE EXCEPTION 'TEST FAILED: cross-branch stock was incorrectly available';
     EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM NOT ILIKE '%Insufficient stock%' THEN
+        -- Branch A has only 5 non-expired batch units. The hardened RPC
+        -- may reject this either at the aggregate stock guard or at the
+        -- branch-scoped FEFO batch guard. Both outcomes prove Branch B
+        -- stock was not incorrectly consumed.
+        IF SQLERRM NOT ILIKE '%Insufficient stock%'
+           AND SQLERRM NOT ILIKE '%Insufficient non-expired batch stock%'
+        THEN
             RAISE;
         END IF;
     END;
@@ -207,4 +213,4 @@ $$;
 
 ROLLBACK;
 
-SELECT 'X-POS inventory regression tests passed' AS result;
+SELECT 'HuluStock inventory regression tests passed' AS result;
