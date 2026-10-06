@@ -57,6 +57,27 @@ async def get_supabase_client() -> Optional[Client]:
         logger.info(f"[DB] Initializing Supabase admin client (service role)...")
         logger.info(f"[DB] SUPABASE_URL set: {bool(SUPABASE_URL)}")
         logger.info(f"[DB] SUPABASE_SERVICE_KEY set: {bool(SUPABASE_SERVICE_KEY)}")
+        # Safe key-shape log (never logs the key itself): tells anon vs
+        # service_role vs new opaque sb_secret_ format apart from Render logs.
+        try:
+            import base64 as _b64
+            import json as _json
+            _k = SUPABASE_SERVICE_KEY.strip()
+            if _k.startswith("sb_secret_"):
+                logger.info("[DB] key_format=opaque-secret (new Supabase secret key)")
+            elif _k.startswith("sb_publishable_"):
+                logger.error("[DB] key_role=ANON (publishable key) — this key is subject to RLS and WILL get 403. Use the service_role secret instead.")
+            elif _k.count(".") == 2:
+                _payload = _k.split(".")[1]
+                _payload += "=" * (-len(_payload) % 4)
+                _role = _json.loads(_b64.urlsafe_b64decode(_payload).decode()).get("role", "?")
+                logger.info(f"[DB] key_role={_role}")
+                if _role != "service_role":
+                    logger.error("[DB] Configured key is NOT service_role — PostgREST calls will get 403 permission denied. Paste the service_role secret into SUPABASE_SERVICE_KEY.")
+            else:
+                logger.warning("[DB] key_format=unrecognized — verify it is the service_role secret from Supabase Settings → API.")
+        except Exception:
+            pass
 
         parsed = urlparse(SUPABASE_URL)
         if parsed.hostname:
