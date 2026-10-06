@@ -254,9 +254,12 @@ BEGIN
                 NULLIF(v_payment->>'bank_account_id', '')::UUID
             );
 
-            IF (v_payment->>'payment_method') = 'bank'
+            IF (v_payment->>'payment_method') IN ('bank', 'mobile_money', 'card')
                AND COALESCE(v_payment->>'bank_account_id', '') <> ''
             THEN
+                -- The account id column also carries the mobile-money
+                -- provider/bank account id (see API); match by id + org so a
+                -- sale can never credit another organization's account.
                 UPDATE bank_accounts
                 SET balance = balance + (v_payment->>'amount')::NUMERIC
                 WHERE id = (v_payment->>'bank_account_id')::UUID

@@ -23,7 +23,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_manager
 from database import get_supabase_client
 from .gemini_pool import get_active_key as _get_active_key, rotate_after_429, key_count as _key_count
 
@@ -104,7 +104,7 @@ async def _call_gemini_grounded(parts: list, prompt: str, retries: int = 4) -> d
     """
     last_err = None
 
-    for attempt in range(max(retries, len(_KEYS))):
+    for attempt in range(max(retries, _key_count())):
         key_obj = await _get_active_key()
         if not key_obj:
             raise HTTPException(503, "No Gemini API key configured.")
@@ -416,14 +416,14 @@ async def scan_product(body: ScanRequest, current_user: dict = Depends(get_curre
 async def get_usage(current_user: dict = Depends(get_current_user)):
     org_id = current_user["organization_id"]
     info   = await _get_org(org_id)
-    info["gemini_configured"] = len(_KEYS) > 0
-    info["keys_count"]        = len(_KEYS)
+    info["gemini_configured"] = _key_count() > 0
+    info["keys_count"]        = _key_count()
     return info
 
 @router.post("/usage/reset")
 async def reset_usage(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ("admin", "manager", "superadmin"):
-        raise HTTPException(403, "Only admins/managers can reset usage")
+    if current_user.get("role") not in ("admin", "superadmin"):
+        raise HTTPException(403, "Only admins can reset usage")
     client = await get_supabase_client()
     if not client: raise HTTPException(503, "DB unavailable")
     try:
@@ -448,7 +448,7 @@ async def keys_status(current_user: dict = Depends(get_current_user)):
 
 @router.post("/category")
 async def create_category(body: CategoryCreateRequest,
-                           current_user: dict = Depends(get_current_user)):
+                           current_user: dict = Depends(require_manager)):
     org_id = current_user["organization_id"]
     client = await get_supabase_client()
     if not client: raise HTTPException(503, "DB unavailable")
@@ -473,8 +473,7 @@ async def create_category(body: CategoryCreateRequest,
         raise HTTPException(500, f"Failed: {e}")
 
 @router.post("/category/template/{template_name}")
-async def apply_template(template_name: str, body: TemplateApplyRequest, current_user: dict = Depends(get_current_user)):
-    # branch_id from request body — create categories scoped to that branch
+async def apply_template(template_name: str, body: TemplateApplyRequest, current_user: dict = Depends(require_manager)):
     # NOTE: body MUST be a Pydantic model (not dict) for FastAPI to parse JSON body correctly
     # Only use branch_id from request body if explicitly provided
     # If not provided, categories will be created as shared (no branch_id)

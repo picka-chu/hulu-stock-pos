@@ -37,6 +37,11 @@ DECLARE
     v_branch UUID;
     v_reason TEXT := left(COALESCE(p_reason,'Customer return'),255);
     v_ret_batch_id UUID;
+    v_opay payments%ROWTYPE;
+    v_rev NUMERIC;
+    v_rev_total NUMERIC := 0;
+    v_opay_n INTEGER := 0;
+    v_opay_count INTEGER := 0;
 BEGIN
     SELECT * INTO v_user FROM users
     WHERE id=p_user_id AND organization_id=p_organization_id AND COALESCE(is_active,true)
@@ -200,8 +205,38 @@ BEGIN
         notes=format('Return for %s — %s',COALESCE(v_sale.invoice_number,''),v_reason)
     WHERE id=v_credit_id;
 
-    INSERT INTO payments(id,sale_id,payment_method,amount,bank_account_id)
-    VALUES(gen_random_uuid(),v_credit_id,COALESCE(v_sale.payment_method,'cash'),-v_total_refund,NULL);
+    -- Reverse the original tender across its real methods/accounts so
+    -- bank/mobile balances net out (sales credit them; returns must debit).
+    -- Each account-linked original payment gets a mirror reversal row for
+    -- its proportional share of the refund (last row takes the remainder
+    -- so rounding always sums exactly). Pure-cash sales keep the single
+    -- cash credit row below.
+    SELECT COUNT(*) INTO v_opay_count FROM payments
+    WHERE sale_id=p_sale_id AND bank_account_id IS NOT NULL;
+    FOR v_opay IN
+        SELECT * FROM payments
+        WHERE sale_id=p_sale_id AND bank_account_id IS NOT NULL
+        ORDER BY created_at, id
+    LOOP
+        v_opay_n := v_opay_n + 1;
+        IF v_opay_n < v_opay_count THEN
+            v_rev := ROUND(v_opay.amount * v_total_refund / NULLIF(v_sale.net_amount, 0), 2);
+        ELSE
+            v_rev := ROUND(v_total_refund - v_rev_total, 2);
+        END IF;
+        v_rev_total := v_rev_total + v_rev;
+        UPDATE bank_accounts
+        SET balance = balance - v_rev
+        WHERE id = v_opay.bank_account_id
+          AND organization_id = p_organization_id;
+        INSERT INTO payments(id,sale_id,payment_method,amount,bank_account_id)
+        VALUES(gen_random_uuid(),v_credit_id,v_opay.payment_method,-v_rev,v_opay.bank_account_id);
+    END LOOP;
+
+    IF v_opay_count = 0 THEN
+        INSERT INTO payments(id,sale_id,payment_method,amount,bank_account_id)
+        VALUES(gen_random_uuid(),v_credit_id,COALESCE(v_sale.payment_method,'cash'),-v_total_refund,NULL);
+    END IF;
 
     -- Determine whether all original sold quantities have now been returned.
     IF NOT EXISTS (

@@ -110,7 +110,8 @@ async def update_bank_account(account_id: UUID, account_data: BankAccountUpdate,
     if account_data.account_name   is not None: updates["account_name"]   = account_data.account_name
     if account_data.account_number is not None: updates["account_number"] = account_data.account_number
     if account_data.bank_name      is not None: updates["bank_name"]      = account_data.bank_name
-    if account_data.balance        is not None: updates["balance"]        = float(account_data.balance)
+    # Balances move only through transfers/sales/returns (ledger integrity);
+    # direct overwrites would fabricate money with no audit trail.
     if account_data.account_type   is not None: updates["account_type"]   = account_data.account_type
     if account_data.is_active      is not None: updates["is_active"]      = account_data.is_active
     if not updates:
@@ -132,37 +133,48 @@ async def delete_bank_account(account_id: UUID, current_user: dict = Depends(req
 # ── Cash Transfers ────────────────────────────────────────────────────────────
 @router.post("/transfer", response_model=CashTransferResponse, status_code=status.HTTP_201_CREATED)
 async def create_cash_transfer(transfer_data: CashTransferCreate, current_user: dict = Depends(require_manager)):
+    import random as _random
     branch_id = str(transfer_data.branch_id) if transfer_data.branch_id else current_user.get("branch_id")
     if branch_id:
         from middleware.auth import verify_branch_in_org as _verify_branch
         if not await _verify_branch(str(branch_id), str(current_user["organization_id"])):
             raise HTTPException(status_code=404, detail="Branch not found")
-    ref = f"TRF-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    result = await insert_one("cash_transfers", {
-        "id":               str(uuid4()),
-        "organization_id":  str(current_user["organization_id"]),
-        "branch_id":        branch_id,
-        "type":             transfer_data.type.value,
-        "amount":           float(transfer_data.amount),
-        "bank_account_id":  str(transfer_data.bank_account_id) if transfer_data.bank_account_id else None,
-        "reference_number": ref,
-        "status":           "completed",
-        "created_by":       str(current_user["id"]),
-        "notes":            transfer_data.notes,
-    })
+    amount = float(transfer_data.amount)
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="Transfer amount must be greater than 0")
+    # Validate the account and funds BEFORE writing anything: the old code
+    # inserted the transfer row first, so a failed balance check left phantom
+    # 'completed' transfers behind.
+    new_bal = None
     if transfer_data.bank_account_id:
         account = await fetch_one("bank_accounts", {"id": str(transfer_data.bank_account_id), "organization_id": str(current_user["organization_id"])})
         if not account:
             raise HTTPException(status_code=404, detail="Bank account not found")
         current_bal = float(account.get("balance", 0))
         if transfer_data.type.value == "cash_to_bank":
-            new_bal = current_bal + float(transfer_data.amount)
+            new_bal = current_bal + amount
         elif transfer_data.type.value == "bank_to_cash":
-            new_bal = current_bal - float(transfer_data.amount)
+            new_bal = current_bal - amount
             if new_bal < 0:
                 raise HTTPException(status_code=400, detail="Insufficient bank balance for this withdrawal")
         else:
-            new_bal = current_bal  # other transfer types don't change bank balance
+            new_bal = current_bal  # cash_deposit/cash_withdrawal don't move bank balance
+    ref = f"TRF-{datetime.now().strftime('%Y%m%d%H%M%S')}-{_random.randint(100, 999)}"
+    result = await insert_one("cash_transfers", {
+        "id":               str(uuid4()),
+        "organization_id":  str(current_user["organization_id"]),
+        "branch_id":        branch_id,
+        "type":             transfer_data.type.value,
+        "amount":           amount,
+        "bank_account_id":  str(transfer_data.bank_account_id) if transfer_data.bank_account_id else None,
+        "reference_number": ref,
+        "status":           "completed",
+        "created_by":       str(current_user["id"]),
+        "notes":            transfer_data.notes,
+    })
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to record transfer")
+    if transfer_data.bank_account_id:
         await update_one("bank_accounts", {"balance": new_bal}, {"id": str(transfer_data.bank_account_id), "organization_id": str(current_user["organization_id"])})
     return result
 

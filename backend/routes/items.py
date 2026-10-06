@@ -1405,10 +1405,14 @@ async def create_low_stock_notification(org_id: str, item_id: str, item_name: st
         logger.error(f"[NOTIFICATION] Failed to create low stock notification: {e}")
 
 
-async def create_expiry_notification(org_id: str, item_id: str, item_name: str, expiry_date: datetime):
-    """Create an expiring item notification"""
+async def create_expiry_notification(org_id: str, item_id: str, item_name: str, expiry_date):
+    """Create an expiring item notification (accepts date or datetime)."""
     try:
-        days_until_expiry = (expiry_date - datetime.utcnow()).days
+        from datetime import date as _d
+        if isinstance(expiry_date, str):
+            expiry_date = _d.fromisoformat(expiry_date[:10])
+        _exp = expiry_date.date() if isinstance(expiry_date, datetime) else expiry_date
+        days_until_expiry = (_exp - _d.today()).days
         
         notification_dict = {
             "id": str(uuid4()),

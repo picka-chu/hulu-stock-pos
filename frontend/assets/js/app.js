@@ -47,12 +47,20 @@ let _cameraAvailable = null;   // null=unknown, true/false after first check
 
 async function checkCameraAvailable() {
     if (_cameraAvailable !== null) return _cameraAvailable;
-    _cameraAvailable = false; // assume no camera until proven otherwise
-    // Fire-and-forget the async check — don't block POS render
-    navigator.mediaDevices?.enumerateDevices().then(devices => {
+    // Synchronous best-effort answer so first-call consumers (scan buttons)
+    // don't lock into "no camera": mediaDevices existing means a camera MAY
+    // exist; the async enumeration then corrects the cached value.
+    const _maybe = !!(navigator.mediaDevices?.enumerateDevices);
+    if (!_maybe) {
+        _cameraAvailable = false;
+        return false;
+    }
+    // Fire-and-forget the async check — don't block POS render.
+    navigator.mediaDevices.enumerateDevices().then(devices => {
         _cameraAvailable = devices.some(d => d.kind === 'videoinput');
-    }).catch(() => {});
-    return _cameraAvailable;
+    }).catch(() => { _cameraAvailable = false; });
+    _cameraAvailable = true; // optimistic until enumeration resolves
+    return true;
 }
 
 // ── Branch context helper ──────────────────────────────────────────────────────
@@ -2581,6 +2589,7 @@ function updatePaymentSummary() {
 
 async function completeSale() {
     if (AppState.cart.length === 0) return;
+    if (window._saleInFlight) return; // double-click / double-tap guard
     
     const branchId = AppState.branch?.id;
     if (!branchId) { showToast('Please select a branch', 'error'); return; }
@@ -2621,7 +2630,13 @@ async function completeSale() {
     }
     
     validationDiv.classList.add('hidden');
-    
+
+    // In-flight guard engages only once validation passes, so failed
+    // validation never leaves the button stuck disabled.
+    window._saleInFlight = true;
+    const completeBtn = document.getElementById('completeSaleBtn');
+    if (completeBtn) completeBtn.disabled = true;
+
     const items = AppState.cart.map(i => ({
         item_id: i.item_id,
         quantity: i.quantity,
@@ -2633,6 +2648,14 @@ async function completeSale() {
     
     try {
         const discountAmount = parseFloat(document.getElementById('posDiscountAmount')?.value) || 0;
+        // Idempotency key: stable for this exact cart so a retry after a
+        // timeout does not create a duplicate sale; rotates when the cart,
+        // branch, or discount changes, and after each completed sale.
+        const _keySrc = JSON.stringify({ b: branchId, d: discountAmount, i: items });
+        let _h = 0;
+        for (let _i = 0; _i < _keySrc.length; _i++) _h = ((_h << 5) - _h + _keySrc.charCodeAt(_i)) | 0;
+        if (!window._saleKeyCounter) window._saleKeyCounter = 0;
+        const _idemKey = `pos-${branchId}-${(_h >>> 0).toString(36)}-${window._saleKeyCounter}`;
         const sale = await window.SalesAPI.create({
             branch_id: branchId,
             items,
@@ -2644,8 +2667,10 @@ async function completeSale() {
             bank_paid: bankAmount,
             mobile_money_paid: mobileMoneyAmount,
             bank_account_id: bankAccountId || null,
-            mobile_money_account_id: mobileMoneyAccountId || null
+            mobile_money_account_id: mobileMoneyAccountId || null,
+            idempotency_key: _idemKey
         });
+        window._saleKeyCounter++;
 
         // Build sale object for receipt
         const saleData = {
@@ -2675,7 +2700,11 @@ async function completeSale() {
             showToast('Sale complete — printing receipt…', 'success');
         } else {
             // Show success modal with print option
-            const change = Math.max(0, cashAmount - grandTotal);
+            // Prefer the server-computed change (handles split tender correctly);
+            // fall back to the client estimate for older backends.
+            const change = (sale && Number.isFinite(Number(sale.change_amount)))
+                ? Number(sale.change_amount)
+                : Math.max(0, cashAmount - grandTotal);
             document.getElementById('ssInvoiceNum').textContent  = saleData.invoice_number || '';
             document.getElementById('ssTotalAmt').textContent    = formatCurrency(grandTotal);
             const payParts = [];
@@ -2694,6 +2723,9 @@ async function completeSale() {
         }
     } catch (error) {
         showToast(error.message || 'Payment failed', 'error');
+    } finally {
+        window._saleInFlight = false;
+        if (completeBtn) completeBtn.disabled = false;
     }
 }
 
@@ -6018,7 +6050,7 @@ async function loadSales() {
                         <button class="text-blue-500 hover:text-blue-700 mr-2" title="View Receipt" onclick="viewReceipt('${s.id}')">
                             <i class="fas fa-receipt"></i>
                         </button>
-                        ${s.payment_status === 'paid' ? `<button class="text-orange-500 hover:text-orange-700" title="Process Return" onclick="openReturnModal('${s.id}')"><i class="fas fa-undo-alt"></i></button>` : ''}
+                        ${['paid', 'partial_return'].includes(s.payment_status) ? `<button class="text-orange-500 hover:text-orange-700" title="Process Return" onclick="openReturnModal('${s.id}')"><i class="fas fa-undo-alt"></i></button>` : ''}
                     </td>
                 </tr>
             `;
@@ -7935,16 +7967,22 @@ async function openReturnModal(saleId) {
     }
 
     const items = _returnSaleData.items || [];
-    const rows = items.map(it => `
+    const _retByItem = _returnSaleData.returned_by_item || {};
+    const rows = items.map(it => {
+        const _sold = Number(it.quantity) || 0;
+        const _ret = Number(_retByItem[it.item_id] || _retByItem[String(it.item_id)] || 0);
+        const _left = Math.max(0, Math.round((_sold - _ret) * 1000000) / 1000000);
+        return `
         <tr>
-            <td style="padding:8px 6px;font-size:13px;">${esc(it.item_name || it.name || 'Item')}</td>
-            <td style="padding:8px 6px;font-size:13px;text-align:center;">${it.quantity}</td>
+            <td style="padding:8px 6px;font-size:13px;">${esc(it.item_name || it.name || 'Item')}${_ret > 0 ? ` <span style="color:var(--text-3);font-size:11px;">(returned ${_ret})</span>` : ''}</td>
+            <td style="padding:8px 6px;font-size:13px;text-align:center;">${_left}</td>
             <td style="padding:8px 6px;text-align:center;">
-                <input type="number" id="ret_${esc(it.item_id)}" min="0" max="${it.quantity}" value="${it.quantity}"
+                <input type="number" id="ret_${esc(it.item_id)}" min="0" max="${_left}" value="${_left}"
                     style="width:64px;padding:5px;border:1.5px solid var(--border);border-radius:7px;
-                           font-size:13px;text-align:center;background:var(--surface);color:var(--text-1);">
+                           font-size:13px;text-align:center;background:var(--surface);color:var(--text-1);" ${_left <= 0 ? 'disabled' : ''}>
             </td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
 
     modal.innerHTML = `
         <div class="modal-content" style="max-width:480px;">
@@ -7990,7 +8028,7 @@ async function confirmReturn() {
     const items  = _returnSaleData.items || [];
     const reason = document.getElementById('returnReason')?.value?.trim() || 'Customer return';
     const returnItems = items
-        .map(it => ({ item_id: it.item_id, quantity: parseInt(document.getElementById(`ret_${it.item_id}`)?.value || 0) }))
+        .map(it => ({ item_id: it.item_id, quantity: parseFloat(document.getElementById(`ret_${it.item_id}`)?.value || 0) }))
         .filter(r => r.quantity > 0);
 
     if (!returnItems.length) { showToast('No items selected for return', 'error'); return; }

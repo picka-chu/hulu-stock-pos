@@ -182,8 +182,18 @@ async def delete_branch(
     branch_id: UUID,
     current_user: dict = Depends(require_admin)  # Changed from require_manager to require_admin
 ):
-    """Delete branch - Admin only"""
+    """Delete branch - Admin only. Refuses while dependent rows exist (use deactivate instead)."""
     try:
+        # Never hard-delete a branch that still owns data: items, users,
+        # sales, bank accounts and expenses reference it for history.
+        # Deactivate (PUT is_active=false) instead.
+        for _table in ("items", "users", "sales", "bank_accounts", "expenses"):
+            _dep = await fetch_one(_table, {"branch_id": str(branch_id), "organization_id": current_user["organization_id"]})
+            if _dep:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Cannot delete: branch still has {_table}. Deactivate it instead (set is_active=false)."
+                )
         # Delete branch using proper delete method
         filters = {"id": str(branch_id), "organization_id": current_user["organization_id"]}
         result = await delete_one("branches", filters)

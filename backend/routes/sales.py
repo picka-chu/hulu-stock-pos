@@ -22,9 +22,14 @@ router = APIRouter()
 
 
 def generate_invoice_number() -> str:
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    random_part = ''.join(random.choices(string.digits, k=4))
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    random_part = ''.join(random.choices(string.digits, k=6))
     return f"INV-{timestamp}-{random_part}"
+
+
+# In-memory idempotency registry: (organization_id, key) -> {sale_id, change, ts}.
+# 10-minute TTL; single-instance best-effort (prevents double-charge on retry).
+_IDEMPOTENCY_KEYS: dict = {}
 
 
 async def _get_sale_items_with_names(client, sale_id: str) -> list:
@@ -100,7 +105,7 @@ async def _get_payments(client, sale_id: str) -> list:
         return []
 
 
-def _build_sale_response(sale: dict, items: list, payments: list, branch_name: str = None) -> SaleResponse:
+def _build_sale_response(sale: dict, items: list, payments: list, branch_name: str = None, change_amount: float = 0, returned_by_item: dict = None) -> SaleResponse:
     """Build SaleResponse, computing payment_method from actual payments."""
     # Derive payment method(s) display from payments list
     if payments:
@@ -126,7 +131,9 @@ def _build_sale_response(sale: dict, items: list, payments: list, branch_name: s
         notes=sale.get("notes"),
         created_at=sale["created_at"],
         items=[SaleItemResponse(**item) for item in items],
-        payments=[PaymentResponse(**p) for p in payments]
+        payments=[PaymentResponse(**p) for p in payments],
+        change_amount=round(float(change_amount or 0), 2),
+        returned_by_item={str(k): float(v) for k, v in (returned_by_item or {}).items()}
     )
 
 
@@ -154,6 +161,24 @@ async def create_sale(
     client = await get_supabase_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
+
+    # ── Idempotency: a retried request with the same key returns the ─────────
+    # original sale instead of charging twice (double-click, timeout retry).
+    import time as _time
+    _idem_key = (getattr(sale_data, "idempotency_key", None) or "").strip()[:120]
+    if _idem_key:
+        _now = _time.time()
+        for _k in [k for k, v in _IDEMPOTENCY_KEYS.items() if _now - v.get("ts", 0) > 600]:
+            _IDEMPOTENCY_KEYS.pop(_k, None)
+        _hit = _IDEMPOTENCY_KEYS.get((org_id, _idem_key))
+        if _hit:
+            _s = await fetch_one("sales", {"id": _hit["sale_id"], "organization_id": org_id})
+            if _s:
+                _br = await fetch_one("branches", {"id": _s["branch_id"], "organization_id": org_id})
+                _si = await _get_sale_items_with_names(client, _hit["sale_id"])
+                _sp = await _get_payments(client, _hit["sale_id"])
+                return _build_sale_response(_s, _si, _sp, _br.get("name") if _br else None, _hit.get("change", 0))
+            _IDEMPOTENCY_KEYS.pop((org_id, _idem_key), None)
 
     # Verify branch belongs to organization
     branch = await fetch_one("branches", {"id": branch_id, "organization_id": org_id})
@@ -295,21 +320,32 @@ async def create_sale(
             "item_name": product["name"]  # Snapshot name at time of sale
         })
 
-    # Calculate totals
-    if sale_data.subtotal and sale_data.tax_amount:
-        subtotal = sale_data.subtotal
-        tax_amount = sale_data.tax_amount
-        total_amount = sale_data.total_amount if sale_data.total_amount else subtotal + tax_amount
-    else:
-        tax_amount = total_amount * (tax_percentage / 100)
-        total_amount = total_amount + tax_amount
+    # ── Totals: ALWAYS recomputed server-side (single source of truth) ───────
+    # Client subtotal/tax/total are ignored: the frontend used to send
+    # total = subtotal + tax - discount, then the old code subtracted the
+    # discount AGAIN (net = total - discount), double-counting every discount
+    # and rejecting exact payments (payment check compares against net).
+    subtotal = round(total_amount, 2)
+    tax_amount = round(subtotal * (tax_percentage / 100), 2)
+    total_amount = round(subtotal + tax_amount, 2)
 
-    discount_amount = sale_data.discount_amount
-    net_amount = total_amount - discount_amount
+    discount_amount = max(0.0, min(float(sale_data.discount_amount or 0), total_amount))
+    net_amount = round(total_amount - discount_amount, 2)
 
-    cash_paid = sale_data.cash_paid or 0
-    bank_paid = sale_data.bank_paid or 0
-    mobile_money_paid = sale_data.mobile_money_paid or 0
+    cash_paid = float(sale_data.cash_paid or 0)
+    bank_paid = float(sale_data.bank_paid or 0)
+    mobile_money_paid = float(sale_data.mobile_money_paid or 0)
+    if cash_paid < 0 or bank_paid < 0 or mobile_money_paid < 0:
+        raise HTTPException(status_code=422, detail="Payment amounts cannot be negative")
+
+    # ── Tendered vs applied: transfers are exact, cash may overpay (change) ──
+    # Bank/mobile_money cannot give change, so they must not exceed the net.
+    if round(bank_paid + mobile_money_paid, 2) > net_amount + 0.01:
+        raise HTTPException(status_code=400, detail="Card/bank/mobile payments exceed the sale total")
+    cash_applied = round(net_amount - bank_paid - mobile_money_paid, 2)
+    if cash_paid + 0.01 < cash_applied:
+        raise HTTPException(status_code=400, detail=f"Insufficient payment: {cash_paid:.2f} received, {cash_applied:.2f} due in cash")
+    change_amount = round(max(0.0, cash_paid - cash_applied), 2)
 
     # Determine primary payment method for sales record (for backwards compat)
     active_methods = []
@@ -322,10 +358,11 @@ async def create_sale(
     sale_id = str(uuid4())
     sold_by = current_user.get("full_name", current_user.get("email", "Unknown"))
 
-    # ── Build payments list for atomic RPC ───────────────────────────────────
+    # ── Build payments list for atomic RPC (APPLIED amounts, not tendered) ───
+    # Recording tendered cash would overstate revenue by the change given.
     payments_for_rpc = []
-    if cash_paid > 0:
-        payments_for_rpc.append({"payment_method": "cash", "amount": cash_paid, "bank_account_id": ""})
+    if cash_applied > 0:
+        payments_for_rpc.append({"payment_method": "cash", "amount": cash_applied, "bank_account_id": ""})
     if bank_paid > 0:
         payments_for_rpc.append({
             "payment_method": "bank", "amount": bank_paid,
@@ -477,7 +514,9 @@ async def create_sale(
         logger.warning(f"Notification fire failed (non-critical): {notif_err}")
     # ─────────────────────────────────────────────────────────────────────────
 
-    return _build_sale_response(return_sale, sale_items, payments, branch.get("name") if branch else None)
+    if _idem_key:
+        _IDEMPOTENCY_KEYS[(org_id, _idem_key)] = {"sale_id": sale_id, "change": change_amount, "ts": _time.time()}
+    return _build_sale_response(return_sale, sale_items, payments, branch.get("name") if branch else None, change_amount)
 
 
 @router.get("", response_model=List[SaleResponse])
@@ -495,7 +534,19 @@ async def get_sales(
     from loguru import logger
     page_size = min(page_size, 100)   # cap to prevent DoS
     org_id = current_user["organization_id"]
-    branch_id = branch_id or current_user.get("branch_id")
+    role = current_user.get("role", "cashier")
+    # Branch isolation: cashiers are locked to their own branch; an explicit
+    # branch_id from anyone else must belong to this organization.
+    if role == "cashier":
+        effective_branch = current_user.get("branch_id")
+    elif branch_id and str(branch_id) not in ("", "undefined", "null"):
+        from middleware.auth import verify_branch_in_org
+        if not await verify_branch_in_org(str(branch_id), str(org_id)):
+            raise HTTPException(status_code=404, detail="Branch not found")
+        effective_branch = str(branch_id)
+    else:
+        effective_branch = current_user.get("branch_id")
+    # admin with no branch and no param = sees all branches
 
     client = await get_supabase_client()
     if not client:
@@ -504,11 +555,7 @@ async def get_sales(
     try:
         q = client.table("sales").select("*").eq("organization_id", org_id)
 
-        # Branch isolation for all roles
-        role = current_user.get("role", "cashier")
-        effective_branch = branch_id  # from query param (e.g. dashboard selector)
-        if not effective_branch:
-            effective_branch = current_user.get("branch_id")
+        # Branch isolation resolved above (cashier locked, others verified).
         if effective_branch:
             q = q.eq("branch_id", str(effective_branch))
         # admin with no branch and no param = sees all branches
@@ -623,12 +670,27 @@ async def get_sale(sale_id: UUID, current_user: dict = Depends(get_current_user)
     branch_name = None
     if sale.get("branch_id"):
         try:
-            branch = await fetch_one("branches", {"id": str(sale["branch_id"])})
+            branch = await fetch_one("branches", {"id": str(sale["branch_id"]), "organization_id": org_id})
             branch_name = branch.get("name") if branch else None
         except Exception as e:
             logger.warning(f"Failed to fetch branch name for sale {sale_id}: {e}")
 
-    return _build_sale_response(sale, items, payments, branch_name)
+    # Already-returned sold-qty per item, so the return modal can cap inputs
+    # at the remaining returnable quantity after prior partial returns.
+    returned_by_item: dict = {}
+    try:
+        _ret = await asyncio.to_thread(
+            lambda: client.table("sale_return_items").select("item_id,quantity")
+                .eq("organization_id", org_id).eq("original_sale_id", str(sale_id)).execute()
+        )
+        for _r in (_ret.data or []):
+            _iid = str(_r.get("item_id") or "")
+            if _iid:
+                returned_by_item[_iid] = round(returned_by_item.get(_iid, 0) + float(_r.get("quantity") or 0), 6)
+    except Exception as e:
+        logger.warning(f"Failed to fetch returned quantities for sale {sale_id}: {e}")
+
+    return _build_sale_response(sale, items, payments, branch_name, 0, returned_by_item)
 
 
 @router.get("/receipt/{sale_id}")

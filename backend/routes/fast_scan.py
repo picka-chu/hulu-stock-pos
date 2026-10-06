@@ -888,11 +888,23 @@ async def batch_process(
     org_id = current_user["organization_id"]
     if not body.items:
         return {"ok": True, "processed": 0, "message": "Nothing to process"}
+    if len(body.items) > 30:
+        raise HTTPException(400, "Max 30 items per batch — split larger scans.")
     logger.info(f"[FastScan] batch-process called: {len(body.items)} items, org={org_id}")
 
     client = await get_supabase_client()
     if not client:
         raise HTTPException(503, "Database unavailable")
+
+    # ── AI cost gate (same rule as /vision/scan): premium orgs only, ─────────
+    # inside the daily quota. Without this any manager could burn unlimited
+    # Gemini calls (30 items x 2 calls per request, fully parallel).
+    from .vision import _get_org as _ai_org_info
+    _ai = await _ai_org_info(org_id)
+    if not _ai.get("is_premium", False):
+        raise HTTPException(403, "AI Scan requires a Premium subscription.")
+    if _ai.get("used", 0) + len(body.items) > _ai.get("limit", 500):
+        raise HTTPException(429, f"Daily AI scan limit would be exceeded ({_ai.get('used', 0)}/{_ai.get('limit', 500)} used, {len(body.items)} requested).")
 
     # Derive the batch branch_id from the first item's DB record (best-effort)
     # This ensures auto-created categories are scoped to the correct branch

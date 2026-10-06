@@ -3,7 +3,7 @@ Pydantic Models for Request/Response Validation
 All data models for the POS system
 """
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from datetime import datetime, date
 from uuid import UUID
 from enum import Enum
@@ -342,6 +342,7 @@ class SaleCreate(BaseModel):
     bank_paid: Optional[float] = Field(default=0.0, ge=0)
     mobile_money_paid: Optional[float] = Field(default=0.0, ge=0)
     notes: Optional[str] = None
+    idempotency_key: Optional[str] = Field(default=None, max_length=120)  # client retry key; same key returns the original sale
 
 class SaleItemResponse(BaseModel):
     id: UUID
@@ -388,6 +389,8 @@ class SaleResponse(BaseModel):
     created_at: datetime
     items: List[SaleItemResponse] = []
     payments: List[PaymentResponse] = []
+    change_amount: float = 0  # cash change given to the customer (tendered - net)
+    returned_by_item: Dict[str, float] = {}  # item_id -> already-returned sold qty (for return modal remaining)
 
     class Config:
         from_attributes = True
