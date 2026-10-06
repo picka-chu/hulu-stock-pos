@@ -344,50 +344,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // ── Update banner (shown when a new SW has activated) ─────────────────────
+    // ── Auto-refresh when a new SW version activates ─────────────────────────
     function _showUpdateBanner() {
-        // Don't show twice
-        if (document.getElementById('_swUpdateBanner')) return;
-
-        const banner = document.createElement('div');
-        banner.id = '_swUpdateBanner';
-        banner.style.cssText = [
-            'position:fixed', 'bottom:16px', 'left:50%', 'transform:translateX(-50%)',
-            'z-index:99999', 'display:flex', 'align-items:center', 'gap:12px',
-            'background:#1e293b', 'color:#f8fafc',
-            'padding:12px 20px', 'border-radius:12px',
-            'box-shadow:0 8px 32px rgba(0,0,0,.45)',
-            'font-size:13px', 'font-weight:500',
-            'max-width:calc(100vw - 32px)',
-            'animation:_swBannerIn .3s ease',
-        ].join(';');
-
-        // Inject keyframe animation if not already present
-        if (!document.getElementById('_swBannerStyle')) {
-            const s = document.createElement('style');
-            s.id = '_swBannerStyle';
-            s.textContent = '@keyframes _swBannerIn{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
-            document.head.appendChild(s);
+        if (_swRefreshing) return;
+        _swRefreshing = true;
+        // Don't reload if there's an active POS sale in progress
+        if (typeof AppState !== 'undefined' && AppState?.cart?.length > 0) {
+            _swRefreshing = false;
+            // Defer: check again in 30s
+            setTimeout(_showUpdateBanner, 30000);
+            return;
         }
-
-        banner.innerHTML = `
-            <span>🔄 A new version of Hulu Stock is ready.</span>
-            <button onclick="window.location.reload()" style="
-                background:#3b82f6;color:#fff;border:none;
-                border-radius:8px;padding:6px 16px;
-                font-size:12px;font-weight:700;cursor:pointer;
-                white-space:nowrap;flex-shrink:0;">
-                Update Now
-            </button>
-            <button onclick="this.parentElement.remove()" style="
-                background:none;border:none;color:#94a3b8;
-                cursor:pointer;font-size:18px;line-height:1;
-                padding:0 2px;flex-shrink:0;" title="Dismiss">×</button>`;
-
-        document.body.appendChild(banner);
-
-        // Auto-dismiss after 30s if user ignores it
-        setTimeout(() => banner.remove(), 30000);
+        console.log('[SW] New version ready — auto-refreshing');
+        window.location.reload();
     }
 
     // ── PWA: Capture install prompt (Add to Home Screen) ─────────────────────
@@ -456,6 +425,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Setup event listeners
     setupEventListeners();
+    
+    // Initialize sidebar state (open on desktop, closed on mobile)
+    initSidebar();
+    
+    // Re-check sidebar on resize (mobile ↔ desktop)
+    let _resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(initSidebar, 200);
+    });
     
     // Load initial data — then restore last page if any
     await loadDashboardData();
@@ -1040,16 +1019,42 @@ function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('mobileOverlay');
     const isOpen  = sidebar.classList.toggle('active');
-    overlay.classList.toggle('visible', isOpen);
-    // Prevent body scroll when sidebar open on mobile
-    document.body.style.overflow = isOpen ? 'hidden' : '';
+    // Only show overlay and lock scroll on mobile/tablet
+    if (window.innerWidth <= 1024) {
+        overlay.classList.toggle('visible', isOpen);
+        document.body.style.overflow = isOpen ? 'hidden' : '';
+    }
+    _saveSidebarState(isOpen);
 }
 
 function closeSidebar() {
-    document.getElementById('sidebar')?.classList.remove('active');
+    const sidebar = document.getElementById('sidebar');
+    sidebar?.classList.remove('active');
     const overlay = document.getElementById('mobileOverlay');
     overlay?.classList.remove('visible');
     document.body.style.overflow = '';
+    _saveSidebarState(false);
+}
+
+function _saveSidebarState(open) {
+    try { localStorage.setItem('sidebar_open', open ? '1' : '0'); } catch (_) {}
+}
+function _loadSidebarState() {
+    try { return localStorage.getItem('sidebar_open'); } catch (_) { return null; }
+}
+function initSidebar() {
+    const isDesktop = window.innerWidth > 1024;
+    if (isDesktop) {
+        // Desktop: default open, restore saved state
+        const saved = _loadSidebarState();
+        const open = saved !== null ? saved === '1' : true;
+        document.getElementById('sidebar')?.classList.toggle('active', open);
+    } else {
+        // Mobile: default closed, close on resize from desktop
+        document.getElementById('sidebar')?.classList.remove('active');
+        document.getElementById('mobileOverlay')?.classList.remove('visible');
+        document.body.style.overflow = '';
+    }
 }
 
 // Setup event listeners
@@ -1167,8 +1172,8 @@ function navigateTo(page) {
     // Update branch selector visibility based on page
     _updateBranchSelectorVisibility(page);
     
-    // Close mobile sidebar
-    closeSidebar();
+    // Close mobile sidebar (only on small screens — desktop stays open)
+    if (window.innerWidth <= 1024) closeSidebar();
     
     // Load page data
     loadPageData(page);
@@ -1888,7 +1893,10 @@ function updateItemPagePharmacyModeControl() {
 }
 
 function isCurrentItemFormPharmacyMode() {
-    return isPharmaTenant() && document.getElementById('pharmacyItemFields')?.classList.contains('is-open');
+    return isPharmaTenant() && (
+        document.getElementById('pharmacyItemFields')?.classList.contains('is-open') ||
+        document.getElementById('itemsPagePharmacyModeEnabled')?.checked
+    );
 }
 
 function setItemPagePharmacyMode(enabled) {
@@ -2916,6 +2924,16 @@ function openItemModal(item = null) {
         pharmaFields.classList.toggle('is-open', pharmaMode);
     }
     toggleItemPharmacyMode(pharmaMode);
+
+    // Safety: ensure cost & retail price fields are always editable outside pharma mode
+    if (!pharmaMode) {
+        ['itemBuyPrice', 'itemSellPrice', 'itemStock', 'itemMinStock', 'itemExpiryDate', 'itemBatchNumber'].forEach(id => {
+            const f = document.getElementById(id);
+            if (f) { f.disabled = false; }
+            const g = f?.closest('.form-group');
+            if (g) { g.style.display = ''; }
+        });
+    }
 
     // ── Explicitly clear every field first, then set values ──────────────────
     // This defeats browser autofill that fires after the modal opens

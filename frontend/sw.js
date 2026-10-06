@@ -23,7 +23,7 @@ const CACHE_PAGES  = `xpos-pages-${SW_VERSION}`;
 
 const SHELL_FILES = [
   '/',
-  '/index.html',
+  '/app.html',
   '/login.html',
   '/manifest.json',
   '/icons/icon-192x192.png',
@@ -170,7 +170,7 @@ async function networkFirstHtml(request) {
   } catch {
     return (
       (await caches.match(request)) ||
-      (await caches.match('/index.html')) ||
+      (await caches.match('/app.html')) ||
       new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html' } })
     );
   }

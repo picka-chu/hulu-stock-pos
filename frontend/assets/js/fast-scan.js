@@ -281,7 +281,9 @@ window.FastScan = (() => {
 
   function _startBarcodeScanner() {
     if (!window.XScanner) {
-      _setBcHint('❌ Scanner not available — refresh the page'); return;
+      _setBcHint('❌ Scanner not available — refresh the page');
+      _addManualEntryBtn();
+      return;
     }
     _setBcHint('Point camera at barcode…');
     // If scanner overlay is already open from a previous scan in this session,
@@ -302,8 +304,29 @@ window.FastScan = (() => {
         SESSION.current.barcode = code;
         _onBarcodeScanned(code);
       },
-      onError: (msg) => _setBcHint('❌ ' + msg),
+      onError: (msg) => {
+        _setBcHint('❌ ' + msg);
+        _addManualEntryBtn();
+      },
     });
+  }
+
+  function _addManualEntryBtn() {
+    const area = document.getElementById('fsBcResult');
+    if (!area) return;
+    // Only add if not already present
+    if (document.getElementById('fsManualEntryBtn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'fsManualEntryBtn';
+    btn.innerHTML = '<i class="fas fa-keyboard"></i> Enter Barcode Manually';
+    btn.style.cssText = 'display:flex;width:100%;margin-top:10px;padding:12px;border-radius:10px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1px dashed rgba(255,255,255,.15);font-size:13px;font-weight:600;cursor:pointer;align-items:center;justify-content:center;gap:8px;';
+    btn.onclick = () => {
+      const code = prompt('Enter barcode:');
+      if (code && code.trim()) {
+        _onBarcodeScanned(code.trim());
+      }
+    };
+    area.appendChild(btn);
   }
 
   function _setBcHint(msg) {
@@ -412,6 +435,12 @@ window.FastScan = (() => {
 
       SESSION.expiryStream = stream;
       v.srcObject = stream;
+
+      // Show/hide torch button based on capability
+      const track2 = stream.getVideoTracks()[0];
+      const caps2 = track2.getCapabilities?.() || {};
+      const torchBtn = document.getElementById('fsTorchBtn');
+      if (torchBtn) torchBtn.style.display = caps2.torch ? 'flex' : 'none';
       v.setAttribute('playsinline', '');  // iOS: prevent full-screen takeover
       v.setAttribute('muted', '');
       v.setAttribute('autoplay', '');
@@ -465,6 +494,19 @@ window.FastScan = (() => {
     } catch (err) {
       console.warn('[FastScan] expiry camera warm-up failed:', err.message);
     }
+  }
+
+  let _fsTorchOn = false;
+
+  function toggleTorch() {
+    if (!SESSION.expiryStream) return;
+    _fsTorchOn = !_fsTorchOn;
+    const track = SESSION.expiryStream.getVideoTracks()[0];
+    track.applyConstraints({ advanced: [{ torch: _fsTorchOn }] }).catch(() => {});
+    const btn = document.getElementById('fsTorchBtn');
+    if (btn) btn.innerHTML = _fsTorchOn
+      ? '<i class="fas fa-bolt" style="color:#fbbf24"></i>'
+      : '<i class="fas fa-bolt"></i>';
   }
 
   function _stopExpiryCamera() {
@@ -982,7 +1024,7 @@ window.FastScan = (() => {
   }
 
   return {
-    open, close,
+    open, close, toggleTorch,
     _pickBranch, done, _retryFailed,
     captureExpiry, retakeExpiry, skipExpiry, expiryNext,
     confirmItem,

@@ -5,7 +5,7 @@ CRUD operations for items/products
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File
 from uuid import UUID, uuid4
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import base64
 import os
 from loguru import logger
@@ -657,7 +657,7 @@ async def create_item(
         client_check = await get_supabase_client()
         if client_check:
             try:
-                _dup_branch = str(item_data.branch_id) if item_data.branch_id else None
+                _dup_branch = str(item_branch_id) if item_branch_id else None
                 _dup_q = client_check.table("items") \
                     .select("id,name") \
                     .eq("organization_id", org_id) \
@@ -681,7 +681,7 @@ async def create_item(
     item_dict = {
         "id": item_id,
         "organization_id": str(current_user["organization_id"]),
-        "branch_id": str(item_data.branch_id) if item_data.branch_id else None,
+        "branch_id": str(item_branch_id) if item_branch_id else None,
         "category_id": str(item_data.category_id) if item_data.category_id else None,
         "supplier_id": str(item_data.supplier_id) if item_data.supplier_id else None,
         "name": item_data.name,
@@ -733,7 +733,7 @@ async def create_item(
         batch_dict = {
             "id": batch_id,
             "organization_id": str(current_user["organization_id"]),
-            "branch_id": str(item_data.branch_id) if item_data.branch_id else (str(current_user.get("branch_id")) if current_user.get("branch_id") else None),
+            "branch_id": str(item_branch_id) if item_branch_id else None,
             "item_id": item_id,
             "batch_number": item_data.batch_number,
             "expiry_date": item_data.expiry_date.isoformat() if item_data.expiry_date else None,
@@ -904,55 +904,29 @@ async def update_item(
     current_user: dict = Depends(require_manager)
 ):
     """Update item"""
-    # Update using proper update method
-    update_data = {}
-    
     from uuid import UUID
-    
-    fields = {
-        "name": item_data.name,
-        "description": item_data.description,
-        "barcode": item_data.barcode,
-        "buy_price": item_data.buy_price,
-        "sell_price": item_data.sell_price,
-        # stock_quantity here is used for display/sync purposes. If changed,
-        # it's overwritten by sync_item_stock_from_batches below to match
-        # the actual batch ledger, preventing silent drift.
-        "stock_quantity": item_data.stock_quantity,
-        "min_stock_level": item_data.min_stock_level,
-        "expiry_date": item_data.expiry_date,
-        "batch_number": item_data.batch_number,
-        "image_url": item_data.image_url,
-        "brand": item_data.brand,
-        "ai_status": item_data.ai_status,
-        "expiry_image_url": item_data.expiry_image_url,
-        "generic_name": item_data.generic_name,
-        "brand_name": item_data.brand_name,
-        "strength": item_data.strength,
-        "dosage_form": item_data.dosage_form,
-        "controlled_substance": item_data.controlled_substance,
-        "base_unit_id": str(item_data.base_unit_id) if item_data.base_unit_id else None,
-        "purchase_unit_id": str(item_data.purchase_unit_id) if item_data.purchase_unit_id else None,
-        "sale_unit_id": str(item_data.sale_unit_id) if item_data.sale_unit_id else None,
-        "category_id": item_data.category_id,
-        "supplier_id": item_data.supplier_id,
-        "is_active": item_data.is_active
-    }
-    
-    # Add all fields to update_data (including None to allow clearing values)
-    for field, value in fields.items():
-        if isinstance(value, UUID):
-            update_data[field] = str(value)
-        elif value is not None:
-            update_data[field] = value
-        else:
-            update_data[field] = None
-    
-    if not update_data:
+
+    # Only include fields the client actually sent — never default-None fields
+    raw = item_data.model_dump(exclude_unset=True)
+
+    # stock_quantity is managed exclusively by the batch system; ignore it here
+    raw.pop("stock_quantity", None)
+
+    if not raw:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No fields to update"
         )
+
+    # Convert UUID / date / datetime objects to strings for Supabase
+    update_data = {}
+    for k, v in raw.items():
+        if isinstance(v, UUID):
+            update_data[k] = str(v)
+        elif isinstance(v, (date, datetime)):
+            update_data[k] = v.isoformat()
+        else:
+            update_data[k] = v
     
     logger.info(f"[UPDATE ITEM] item_id={item_id}, org_id={current_user['organization_id']}")
     logger.info(f"[UPDATE ITEM] update_data={update_data}")
@@ -996,18 +970,20 @@ async def update_item(
     # Re-sync stock_quantity from batch ledger to prevent drift. The frontend
     # may send stock_quantity in the update payload, but only the batch system
     # (update_stock, bulk_stock_adjust, or process_sale) is authoritative.
-    try:
-        await asyncio.to_thread(
-            lambda: _uc.rpc("sync_item_stock_from_batches", {"p_item_id": str(item_id)}).execute()
-        )
-        # Re-fetch the corrected stock_quantity for the update_data passed below
-        corrected = await asyncio.to_thread(
-            lambda: _uc.table("items").select("stock_quantity").eq("id", str(item_id)).limit(1).execute()
-        )
-        if corrected.data:
-            update_data["stock_quantity"] = corrected.data[0].get("stock_quantity", update_data.get("stock_quantity", 0))
-    except Exception:
-        pass  # best-effort — non-batch items don't have sync function
+    _uc = await get_supabase_client()
+    if _uc:
+        try:
+            await asyncio.to_thread(
+                lambda: _uc.rpc("sync_item_stock_from_batches", {"p_item_id": str(item_id)}).execute()
+            )
+            # Re-fetch the corrected stock_quantity for the update_data passed below
+            corrected = await asyncio.to_thread(
+                lambda: _uc.table("items").select("stock_quantity").eq("id", str(item_id)).limit(1).execute()
+            )
+            if corrected.data:
+                update_data["stock_quantity"] = corrected.data[0].get("stock_quantity", update_data.get("stock_quantity", 0))
+        except Exception:
+            pass  # best-effort — non-batch items don't have sync function
 
     # Sync to global catalog if barcode/name changed (fire-and-forget)
     if any(k in update_data for k in ("barcode", "name", "description", "image_url")):
@@ -1015,7 +991,6 @@ async def update_item(
     
     # Check for low stock and expiry notifications after update
     # Get the updated item to check conditions
-    _uc = await get_supabase_client()
     _ur = await asyncio.to_thread(
         lambda: _uc.table("items").select("*")
             .eq("id", str(item_id))
@@ -1135,8 +1110,6 @@ async def update_stock(
         if new_quantity == current_qty:
             return item
         if new_quantity > current_qty:
-            return item
-        if new_quantity > current_qty:
             quantity = new_quantity - current_qty
             batch_id = str(uuid4())
             await insert_one("item_batches", {
@@ -1148,7 +1121,7 @@ async def update_stock(
                 "unit_cost": body.get("unit_cost") or item.get("buy_price"),
                 "supplier_id": body.get("supplier_id") or item.get("supplier_id"), "is_active": True,
             })
-        elif new_quantity < current_qty:
+        else:  # new_quantity < current_qty
             quantity = current_qty - new_quantity
             new_quantity = await _deduct_batches_fefo(
                 _sc, item, quantity, str(current_user["organization_id"]),

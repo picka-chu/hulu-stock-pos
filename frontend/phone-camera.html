@@ -9,6 +9,7 @@
     <title>Hulu Stock Camera</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="assets/js/config.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -291,7 +292,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     if (!_sessionId) {
         // Opened without a session — redirect to main app
-        location.href = 'index.html';
+        location.href = 'app.html';
         return;
     }
 
@@ -428,19 +429,28 @@ async function _startCamera(forBarcode = true) {
 }
 
 function _startBarcodeDetect(video) {
-    // Use native BarcodeDetector if available
-    if (!('BarcodeDetector' in window)) {
+    const canvas = document.createElement('canvas');
+    const ctx    = canvas.getContext('2d');
+    let useNative = false;
+
+    // Try native BarcodeDetector first (Chrome/Android, Safari 16+)
+    if ('BarcodeDetector' in window) {
+        try {
+            _decoder = new BarcodeDetector({
+                formats: ['ean_13','ean_8','code_128','qr_code','code_39','upc_a','upc_e','itf','pdf417']
+            });
+            useNative = true;
+        } catch (_) {}
+    }
+
+    // jsQR fallback for iOS <16 or when BarcodeDetector fails
+    const useJsQR = !useNative && typeof window.jsQR === 'function';
+
+    if (!useNative && !useJsQR) {
         document.getElementById('captureBtn').innerHTML =
             '<i class="fas fa-barcode"></i> No auto-detect — type manually';
         return;
     }
-
-    _decoder = new BarcodeDetector({
-        formats: ['ean_13','ean_8','code_128','qr_code','code_39','upc_a','upc_e','itf','pdf417']
-    });
-
-    const canvas = document.createElement('canvas');
-    const ctx    = canvas.getContext('2d');
 
     async function loop() {
         if (!_camStream) return;
@@ -448,10 +458,21 @@ function _startBarcodeDetect(video) {
             canvas.width  = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
+
             try {
-                const codes = await _decoder.detect(canvas);
-                if (codes.length > 0) {
-                    const code = codes[0].rawValue;
+                let code = null;
+                if (useNative && _decoder) {
+                    const codes = await _decoder.detect(canvas);
+                    if (codes.length > 0) code = codes[0].rawValue;
+                } else if (useJsQR) {
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const result = window.jsQR(imageData.data, canvas.width, canvas.height, {
+                        inversionAttempts: 'attemptBoth',
+                    });
+                    if (result?.data) code = result.data;
+                }
+
+                if (code) {
                     _stopCamera();
                     _sendResult('barcode', code);
                     return;

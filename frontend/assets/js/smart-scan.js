@@ -285,10 +285,28 @@ const SmartScan = (() => {
     _showCaptureButtons('live');
   }
 
+  let _torchOn = false;
+
+  function toggleExpiryTorch() {
+    if (!S.stream) return;
+    _torchOn = !_torchOn;
+    const track = S.stream.getVideoTracks()[0];
+    track.applyConstraints({ advanced: [{ torch: _torchOn }] }).catch(() => {});
+    const btn = document.getElementById('ocrAiTorchBtn');
+    if (btn) btn.innerHTML = _torchOn
+      ? '<i class=\"fas fa-bolt\" style=\"color:#fbbf24\"></i>'
+      : '<i class=\"fas fa-bolt\"></i>';
+  }
+
   async function _startExpiryCamera() {
     try {
       _stopStream(S.stream);
       S.stream = await _openCamera(S.videoEl, false);
+      // Show torch button if supported
+      const track = S.stream.getVideoTracks()[0];
+      const caps = track.getCapabilities?.() || {};
+      const torchBtn = document.getElementById('ocrAiTorchBtn');
+      if (torchBtn) torchBtn.style.display = caps.torch ? 'flex' : 'none';
     } catch (err) {
       showToast(err.message || 'Camera error', 'error');
       closeCameraOCRModal();
@@ -894,7 +912,7 @@ const SmartScan = (() => {
   return {
     openCameraOCRModal, closeCameraOCRModal,
     ocrCapture, ocrNextStep, ocrRetake, ocrRetryFromStart, ocrFillForm, ocrGoToReview,
-    _proceedToExpiry, _rescanBarcode,
+    _proceedToExpiry, _rescanBarcode, toggleExpiryTorch,
     openBulkScannerModal, closeBulkScanner, startBulkScanner, pauseBulkScanner,
     clearBulkList, bulkManualEntry, bulkQtyConfirm, confirmBulkReceive,
     _bulkQty, _bulkDel,

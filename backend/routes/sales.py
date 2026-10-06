@@ -139,6 +139,16 @@ async def create_sale(
     branch_id = str(sale_data.branch_id)
     user_id = current_user["id"]
 
+    # Cashiers/managers may only sell from their assigned branch.
+    # Admins are the only role allowed to operate across branches.
+    if current_user.get("role") in ("cashier", "manager"):
+        assigned_branch = current_user.get("branch_id")
+        if not assigned_branch or str(assigned_branch) != branch_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not authorized to create sales for this branch."
+            )
+
     client = await get_supabase_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -643,187 +653,91 @@ async def get_receipt(sale_id: UUID, current_user: dict = Depends(get_current_us
 
 
 # ── Sale Return / Refund ───────────────────────────────────────────────────────
-
 @router.post("/{sale_id}/return")
 async def return_sale(
     sale_id: UUID,
     body: dict,
     current_user: dict = Depends(require_cashier)
 ):
-    """
-    Process a full or partial return for a sale.
-    body: { items: [{item_id, quantity}], reason: str }
-    - Restores stock for each returned item
-    - Creates a negative sale record (credit note)
-    - Marks original sale as 'returned' or 'partial_return'
-    """
+    """Atomically process a full/partial return while preserving original batch lineage."""
     from loguru import logger
-    org_id = current_user["organization_id"]
+
+    org_id = str(current_user["organization_id"])
+    user_id = str(current_user["id"])
+    items = body.get("items") or []
+    reason = (body.get("reason") or "Customer return").strip()[:255]
+
+    if not items:
+        raise HTTPException(status_code=400, detail="No items specified for return")
+
+    # Validate the public request shape before sending it to the database.
+    normalized = []
+    for row in items:
+        try:
+            item_id = str(row.get("item_id") or "")
+            qty = float(row.get("quantity") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid return item")
+        if not item_id or qty <= 0:
+            raise HTTPException(status_code=400, detail="Every return item needs a valid item and quantity")
+        normalized.append({"item_id": item_id, "quantity": qty})
 
     client = await get_supabase_client()
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    # Verify original sale belongs to this org
-    original = await fetch_one("sales", {"id": str(sale_id), "organization_id": org_id})
-    if not original:
-        raise HTTPException(status_code=404, detail="Sale not found")
-    if original.get("payment_status") in ("returned",):
-        raise HTTPException(status_code=400, detail="Sale has already been fully returned")
-
-    return_items = body.get("items", [])
-    reason       = (body.get("reason") or "Customer return").strip()[:255]
-
-    if not return_items:
-        raise HTTPException(status_code=400, detail="No items specified for return")
-
-    # Fetch original sale items to validate quantities. A single sold line can
-    # be split across more than one sale_items row when it crossed a batch
-    # boundary (the very "different buy/sell price + expiry" scenario this
-    # fix targets) — aggregate all rows per item_id instead of keeping only
-    # one, otherwise quantity/cost from the other split rows is silently lost.
-    original_items = await _get_sale_items_with_names(client, str(sale_id))
-    original_map: dict = {}
-    for si in original_items:
-        iid = si.get("item_id")
-        if not iid:
-            continue
-        iid = str(iid)
-        agg = original_map.setdefault(iid, {
-            "item_name": si.get("item_name", "item"),
-            "total_quantity": 0.0,
-            "total_base_quantity": 0.0,
-            "cost_value": 0.0,
-            "unit_price": float(si.get("unit_price", 0) or 0),
-        })
-        agg["total_quantity"] += float(si.get("quantity", 0) or 0)
-        base_qty = float(si.get("base_quantity", 0) or si.get("quantity", 0) or 0)
-        agg["total_base_quantity"] += base_qty
-        agg["cost_value"] += base_qty * float(si.get("cost_price", 0) or 0)
-
-    validated = []
-    refund_total = 0.0
-    for ri in return_items:
-        item_id = str(ri.get("item_id", ""))
-        qty     = float(ri.get("quantity", 0))
-        if qty <= 0:
-            continue
-        orig = original_map.get(item_id)
-        if not orig:
-            raise HTTPException(status_code=400, detail=f"Item {item_id} not in original sale")
-        orig_qty = orig["total_quantity"]
-        if qty > orig_qty + 1e-6:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Return quantity ({qty}) exceeds sold quantity ({orig_qty}) for {orig.get('item_name','item')}"
-            )
-        # Proportion of the base-unit quantity (and cost basis) being
-        # returned, in case this is a partial return of a split line.
-        fraction = (qty / orig_qty) if orig_qty > 0 else 1.0
-        restore_base_qty = orig["total_base_quantity"] * fraction
-        restore_unit_cost = (orig["cost_value"] / orig["total_base_quantity"]) if orig["total_base_quantity"] > 0 else 0.0
-        refund_total += qty * orig["unit_price"]
-        validated.append({
-            "item_id": item_id, "quantity": qty,
-            "restore_base_qty": restore_base_qty, "restore_unit_cost": restore_unit_cost,
-            "unit_price": orig["unit_price"], "item_name": orig.get("item_name", ""),
-        })
-
-    if not validated:
-        raise HTTPException(status_code=400, detail="No valid return items")
-
-    # Restore stock for each returned item via a real batch entry so the
-    # batch ledger and items.stock_quantity never diverge. Adding the
-    # returned amount straight onto items.stock_quantity (a base-unit field)
-    # using a sold-unit quantity, with no matching batch row, used to cause
-    # the very next sale's FEFO sync to silently wipe the returned stock back
-    # out — and once enough drift accumulated, subsequent sales of the item
-    # could fail.
-    for v in validated:
-        rounded_qty = round(v["restore_base_qty"])
-        if rounded_qty <= 0:
-            continue
-        # Don't restock expired batches as fresh stock — refuse return if batch expired
-        orig_row = original_map.get(v.get("item_id"))
-        if orig_row:
-            try:
-                batch_check = await asyncio.to_thread(
-                    lambda: client.table("item_batches").select("expiry_date")
-                        .eq("item_id", v["item_id"]).eq("organization_id", org_id)
-                        .eq("is_active", True).order("expiry_date").limit(1).execute()
-                )
-                if batch_check.data and batch_check.data[0].get("expiry_date"):
-                    from datetime import date as _chk_date
-                    exp = _chk_date.fromisoformat(str(batch_check.data[0]["expiry_date"])[:10]) if isinstance(batch_check.data[0]["expiry_date"], str) else batch_check.data[0]["expiry_date"]
-                    if exp <= _chk_date.today():
-                        raise HTTPException(status_code=400, detail=f"Cannot return expired item {v.get('item_name', '')} — stock from expired batches cannot be restocked as fresh.")
-            except HTTPException:
-                raise
-            except Exception:
-                pass  # best-effort — allow return if check fails
-        try:
-            await asyncio.to_thread(
-                lambda v=v, rq=rounded_qty: client.rpc("restock_return_batch", {
-                    "p_item_id": v["item_id"],
+    try:
+        resp = await asyncio.to_thread(
+            lambda: client.rpc(
+                "process_sale_return",
+                {
+                    "p_sale_id": str(sale_id),
                     "p_organization_id": org_id,
-                    "p_branch_id": str(original.get("branch_id")) if original.get("branch_id") else None,
-                    "p_quantity": rq,
-                    "p_unit_cost": v["restore_unit_cost"],
-                    "p_reference_id": str(sale_id),
-                    "p_reference_type": "sale_return",
-                    "p_created_by": current_user["id"],
-                    "p_notes": reason,
-                }).execute()
-            )
-        except Exception as e:
-            logger.error(f"[Sales] restock_return_batch failed for item {v['item_id']}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to restore stock for return")
+                    "p_user_id": user_id,
+                    "p_items": normalized,
+                    "p_reason": reason,
+                },
+            ).execute()
+        )
+        result = resp.data
+        if not result or not result.get("ok"):
+            raise HTTPException(status_code=400, detail="Return could not be completed")
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"[Sales] atomic return failed: {msg}")
+        if any(x in msg for x in (
+            "Sale not found", "already been fully returned", "not authorized",
+            "exceeds the remaining", "Invalid return", "Original batch", "expired batch",
+            "No valid return"
+        )):
+            raise HTTPException(status_code=400, detail=msg.split("\n")[0])
+        raise HTTPException(status_code=500, detail="Return failed — no inventory or financial changes were committed")
 
-    # Determine if full or partial return
-    total_sold_value = float(original.get("net_amount", 0))
-    is_full_return   = abs(refund_total - total_sold_value) < 0.01
-
-    # Update original sale status
-    new_status = "returned" if is_full_return else "partial_return"
-    await update_one("sales", {"payment_status": new_status, "notes":
-        f"{original.get('notes') or ''} | Return: {reason}".strip(" |")
-    }, {"id": str(sale_id)})
-
-    # Create a credit note (negative sale record)
-    credit_id     = str(uuid4())
-    credit_invoice = f"CR-{generate_invoice_number()}"
-    await insert_one("sales", {
-        "id":               credit_id,
-        "organization_id":  org_id,
-        "branch_id":        str(original.get("branch_id")),
-        "user_id":          current_user["id"],
-        "invoice_number":   credit_invoice,
-        "sold_by":          current_user.get("full_name", current_user.get("email", "Staff")),
-        "total_amount":     -refund_total,
-        "tax_amount":       0,
-        "discount_amount":  0,
-        "net_amount":       -refund_total,
-        "payment_status":   "refunded",
-        "payment_method":   original.get("payment_method", "cash"),
-        "notes":            f"Return for {original.get('invoice_number','')} — {reason}",
-    })
-
-    from database import log_audit
-    await log_audit(
-        organization_id=org_id,
-        user_id=str(current_user["id"]),
-        branch_id=str(original.get("branch_id", "")),
-        action="sale_return", entity_type="sale",
-        entity_id=str(sale_id),
-        details={"credit_invoice": credit_invoice, "refund_amount": refund_total, "return_type": "full" if is_full_return else "partial", "reason": reason},
-    )
-
-    logger.info(f"[Sales] Return processed: orig={sale_id} credit={credit_id} refund={refund_total:.2f}")
+    # App-level audit record for searchable admin history.
+    try:
+        from database import log_audit
+        await log_audit(
+            organization_id=org_id,
+            user_id=user_id,
+            branch_id=str((await fetch_one("sales", {"id": str(sale_id)} ) or {}).get("branch_id") or ""),
+            action="sale_return",
+            entity_type="sale",
+            entity_id=str(sale_id),
+            details={
+                "credit_invoice": result.get("credit_invoice"),
+                "refund_amount": result.get("refund_amount"),
+                "reason": reason,
+            },
+        )
+    except Exception as audit_err:
+        logger.warning(f"[Sales] return audit logging failed: {audit_err}")
 
     return {
-        "ok":              True,
-        "credit_invoice":  credit_invoice,
-        "refund_amount":   refund_total,
-        "return_type":     "full" if is_full_return else "partial",
-        "items_returned":  len(validated),
+        "ok": True,
+        "credit_invoice": result.get("credit_invoice"),
+        "refund_amount": result.get("refund_amount"),
+        "return_type": "full" if (await fetch_one("sales", {"id": str(sale_id)}) or {}).get("payment_status") == "returned" else "partial",
+        "items_returned": len(normalized),
     }
