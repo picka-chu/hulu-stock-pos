@@ -164,7 +164,7 @@ async def security_headers(request: Request, call_next):
 
 # ── CSRF / Origin check for state-changing requests ──────────────────────────
 _CSRF_EXEMPT_PATHS = {"/api/auth/login", "/api/superadmin/login", "/api/health",
-                       "/api/health/ping", "/"}
+                       "/api/health/ping", "/api/register-request", "/"}
 
 @app.middleware("http")
 async def csrf_origin_check(request: Request, call_next):
