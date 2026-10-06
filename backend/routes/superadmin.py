@@ -319,12 +319,19 @@ async def platform_stats(_: dict = Depends(require_superadmin)):
     if not client:
         return {}
 
-    orgs, users, sales, branches = await asyncio.gather(
-        asyncio.to_thread(lambda: client.table("organizations").select("id,is_active,created_at").execute()),
-        asyncio.to_thread(lambda: client.table("users").select("id,is_active").execute()),
-        asyncio.to_thread(lambda: client.table("sales").select("id,total_amount,created_at").eq("payment_status", "paid").execute()),
-        asyncio.to_thread(lambda: client.table("branches").select("id,is_active").execute()),
-    )
+    try:
+        orgs, users, sales, branches = await asyncio.gather(
+            asyncio.to_thread(lambda: client.table("organizations").select("id,is_active,created_at").execute()),
+            asyncio.to_thread(lambda: client.table("users").select("id,is_active").execute()),
+            asyncio.to_thread(lambda: client.table("sales").select("id,total_amount,created_at").eq("payment_status", "paid").execute()),
+            asyncio.to_thread(lambda: client.table("branches").select("id,is_active").execute()),
+        )
+    except Exception as exc:
+        _salog.getLogger("superadmin").exception("Platform stats database request failed: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Superadmin statistics are temporarily unavailable because the database connection failed.",
+        )
 
     orgs_data    = orgs.data or []
     users_data   = users.data or []

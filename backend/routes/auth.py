@@ -16,7 +16,7 @@ from middleware.auth import (
     get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES, DEMO_MODE_ENABLED,
     _make_demo_user, _DEMO_ORG_ID, _DEMO_BRANCH_ID, _DEMO_USER_ID
 )
-from database import fetch_one, fetch_all, insert_one
+from database import fetch_one, fetch_all, insert_one, get_last_connection_error
 
 router = APIRouter()
 
@@ -31,6 +31,12 @@ async def login(credentials: UserLogin, request: Request):
             return await demo_login()
 
     user = await fetch_one("users", {"email": credentials.email})
+    db_error = get_last_connection_error()
+    if user is None and db_error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service is temporarily unavailable. Please try again shortly.",
+        )
 
     # Use constant-time comparison pattern — always verify even if user not found
     dummy_hash = "$2b$12$IeIBUGDCfYXFBpSzH3VyteGy.YHuYZ98iJGbfwjXUxf5v7SdCfqBu" 
