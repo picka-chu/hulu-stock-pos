@@ -3,355 +3,381 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hulu Stock · Owner Panel</title>
+  <title>Hulu Stock · Admin Panel</title>
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#1a8fff">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f172a">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #080b12;
-      --surface:  #0e1220;
-      --card:     #131929;
-      --border:   #1e2a3a;
-      --accent:   #00d4ff;
-      --accent2:  #7c3aed;
-      --danger:   #ff3b5c;
-      --success:  #00e676;
-      --warn:     #ffab00;
-      --text:     #e0eaff;
-      --muted:    #5a6a8a;
-      --mono:     'JetBrains Mono', monospace;
-      --sans:     'Syne', sans-serif;
+      --bg:        #0b0f1a;
+      --sidebar:   #0f1525;
+      --surface:   #151d30;
+      --card:      #1a2440;
+      --border:    #1e2d4a;
+      --border-lt: #253552;
+      --accent:    #3b82f6;
+      --accent2:   #8b5cf6;
+      --danger:    #ef4444;
+      --success:   #22c55e;
+      --warn:      #f59e0b;
+      --text:      #e2e8f0;
+      --text-2:    #94a3b8;
+      --muted:     #64748b;
+      --radius:    10px;
+      --radius-lg: 14px;
+      --shadow:    0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
+      --font:      'Inter', -apple-system, sans-serif;
+      --mono:      'JetBrains Mono', monospace;
     }
 
     body {
-      font-family: var(--sans);
+      font-family: var(--font);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      display: flex;
     }
 
-    /* ── LOGIN ─────────────────────────────────────────── */
+    /* ── SCROLLBAR ─────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* ── LOGIN SCREEN ──────────────────────────────── */
     #loginScreen {
+      position: fixed; inset: 0; z-index: 9999;
       display: flex; align-items: center; justify-content: center;
-      min-height: 100vh;
-      background:
-        radial-gradient(ellipse at 20% 80%, rgba(0,212,255,.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(124,58,237,.08) 0%, transparent 50%),
-        var(--bg);
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at 20% 80%, rgba(59,130,246,.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(139,92,246,.06) 0%, transparent 50%);
     }
     .login-box {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 20px;
-      padding: 48px 40px;
+      padding: 48px 40px 40px;
       width: 100%; max-width: 400px;
-      box-shadow: 0 0 80px rgba(0,0,0,.8), 0 0 0 1px rgba(0,212,255,.05);
+      box-shadow: 0 25px 60px rgba(0,0,0,.6);
     }
-    .login-logo {
-      text-align: center; margin-bottom: 36px;
-    }
+    .login-logo { text-align: center; margin-bottom: 36px; }
     .login-logo .ring {
-      width: 64px; height: 64px; border-radius: 50%;
+      width: 64px; height: 64px; border-radius: 16px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       display: inline-flex; align-items: center; justify-content: center;
-      font-size: 24px; margin-bottom: 14px;
-      box-shadow: 0 0 40px rgba(0,212,255,.25);
+      font-size: 24px; margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(59,130,246,.25);
     }
-    .login-logo h1 { font-size: 20px; font-weight: 800; letter-spacing: -1px; }
-    .login-logo p { color: var(--muted); font-size: 12px; font-family: var(--mono); margin-top: 4px; }
-    .f-group { margin-bottom: 16px; }
-    .f-group label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-family: var(--mono); }
-    .f-group input {
-      width: 100%; padding: 12px 16px;
+    .login-logo h1 { font-size: 22px; font-weight: 800; letter-spacing: -.5px; }
+    .login-logo p { color: var(--muted); font-size: 11px; font-family: var(--mono); margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; }
+    .f-group { margin-bottom: 18px; }
+    .f-group label { display: block; font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; letter-spacing: .3px; }
+    .f-group input, .f-group select, .f-group textarea {
+      width: 100%; padding: 11px 14px;
       background: var(--card); border: 1.5px solid var(--border);
-      border-radius: 10px; color: var(--text); font-size: 14px; font-family: inherit;
-      transition: .2s;
+      border-radius: var(--radius); color: var(--text);
+      font-size: 14px; font-family: inherit; transition: .2s;
     }
-    .f-group input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,.1); }
+    .f-group input:focus, .f-group select:focus, .f-group textarea:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+    }
+    .f-group select option { background: var(--card); }
+
+    /* ── BUTTONS ───────────────────────────────────── */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 11px 18px; border-radius: 10px; font-size: 13px; font-weight: 700;
-      font-family: var(--sans); cursor: pointer; transition: .15s; border: none;
-      white-space: nowrap;
+      padding: 10px 20px; border-radius: var(--radius);
+      font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all .15s; border: none;
+      white-space: nowrap; text-decoration: none;
     }
     .btn-full { width: 100%; }
-    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; }
-    .btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+    .btn-sm { padding: 7px 14px; font-size: 12px; border-radius: 8px; }
+    .btn-xs { padding: 5px 10px; font-size: 11px; border-radius: 6px; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
     .btn-success { background: var(--success); color: #000; }
-    .btn-danger  { background: var(--danger);  color: #fff; }
-    .btn-warn    { background: var(--warn);    color: #000; }
-    .btn-ghost   { background: var(--border);  color: var(--text); }
-    .btn-ghost:hover { background: #2a3550; }
-    .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
-    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-    .btn-sm { padding: 7px 12px; font-size: 11px; border-radius: 8px; }
-    .btn-xs { padding: 4px 10px; font-size: 10px; border-radius: 6px; }
+    .btn-success:hover { opacity: .9; }
+    .btn-danger  { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: .9; }
+    .btn-warn    { background: var(--warn); color: #000; }
+    .btn-ghost   { background: transparent; border: 1px solid var(--border); color: var(--text-2); }
+    .btn-ghost:hover { background: var(--card); color: var(--text); }
+    .btn-ghost2  { background: transparent; color: var(--text-2); }
+    .btn-ghost2:hover { color: var(--text); }
+    .btn-icon { width: 32px; height: 32px; padding: 0; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
 
-    /* ── SHELL ─────────────────────────────────────────── */
-    #appShell { display: none; }
-    #appShell.active { display: flex; flex-direction: column; min-height: 100vh; }
+    /* ── APP SHELL ─────────────────────────────────── */
+    #appShell { display: none; width: 100%; }
+    #appShell.active { display: flex; }
 
-    /* ── TOP NAV ───────────────────────────────────────── */
-    .topnav {
-      display: flex; align-items: center; gap: 0;
-      padding: 0 24px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      height: 56px;
-      position: sticky; top: 0; z-index: 100;
+    /* ── SIDEBAR ───────────────────────────────────── */
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      height: 100vh; position: sticky; top: 0;
+      overflow-y: auto;
     }
-    .nav-brand {
+    .sidebar-brand {
       display: flex; align-items: center; gap: 10px;
-      font-weight: 800; font-size: 15px; letter-spacing: -0.5px;
-      margin-right: 32px; flex-shrink: 0;
+      padding: 20px 20px 24px;
+      font-weight: 800; font-size: 15px; letter-spacing: -.3px;
+      border-bottom: 1px solid var(--border);
     }
-    .nav-brand .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 8px var(--accent);
+    .sidebar-brand .dot {
+      width: 10px; height: 10px; border-radius: 4px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
     }
-    .nav-tabs { display: flex; gap: 2px; flex: 1; }
-    .nav-tab {
-      display: flex; align-items: center; gap: 7px;
-      padding: 0 16px; height: 56px;
-      font-size: 12px; font-weight: 600; color: var(--muted);
-      cursor: pointer; border-bottom: 2px solid transparent;
-      transition: .15s; white-space: nowrap; background: none; border-top: none; border-left: none; border-right: none;
-      font-family: var(--sans);
+    .sidebar-brand small {
+      font-size: 10px; font-weight: 600; color: var(--muted);
+      font-family: var(--mono); letter-spacing: .5px;
+      margin-left: auto; text-transform: uppercase;
     }
-    .nav-tab:hover { color: var(--text); }
-    .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-    .health-dot {
-      width: 8px; height: 8px; border-radius: 50%;
+    .sidebar-nav { padding: 12px 10px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .sidebar-nav a {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 500; color: var(--text-2);
+      cursor: pointer; transition: all .15s; text-decoration: none;
+      border: none; background: none; width: 100%; font-family: inherit;
+    }
+    .sidebar-nav a i { width: 18px; text-align: center; font-size: 14px; }
+    .sidebar-nav a:hover { background: rgba(255,255,255,.04); color: var(--text); }
+    .sidebar-nav a.active {
+      background: rgba(59,130,246,.1); color: var(--accent);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .sidebar-nav .nav-badge {
+      margin-left: auto; font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px;
+      background: rgba(239,68,68,.15); color: var(--danger);
+    }
+    .sidebar-footer {
+      padding: 14px 10px;
+      border-top: 1px solid var(--border);
+    }
+    .sidebar-footer .user-info {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 14px; border-radius: 8px;
+      font-size: 12px; color: var(--muted);
+    }
+    .sidebar-footer .user-info i { font-size: 18px; color: var(--text-2); }
+
+    /* ── MAIN CONTENT ─────────────────────────────── */
+    .main-wrap {
+      flex: 1; display: flex; flex-direction: column;
+      min-height: 100vh; overflow: hidden;
+    }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; height: 60px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .topbar-title {
+      font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px;
+    }
+    .topbar-title i { color: var(--accent); }
+    .topbar-actions { display: flex; align-items: center; gap: 12px; }
+    .health-indicator {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; font-family: var(--mono);
+      padding: 6px 12px; border-radius: 6px;
+      background: var(--card); border: 1px solid var(--border);
+    }
+    .health-indicator .pulse {
+      width: 7px; height: 7px; border-radius: 50%;
       background: var(--muted); transition: .3s;
     }
-    .health-dot.ok      { background: var(--success); box-shadow: 0 0 6px var(--success); }
-    .health-dot.degraded { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+    .health-indicator .pulse.ok { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .health-indicator .pulse.err { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
 
-    /* ── MAIN CONTENT ──────────────────────────────────── */
-    .main { flex: 1; padding: 28px 28px; max-width: 1400px; margin: 0 auto; width: 100%; }
+    .main-content {
+      flex: 1; padding: 28px 32px;
+      max-width: 1400px; width: 100%; margin: 0 auto;
+    }
 
+    /* ── TAB PANELS ───────────────────────────────── */
     .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
+    .tab-panel.active { display: block; animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-    /* ── STAT CARDS ────────────────────────────────────── */
+    .sec-head {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+    }
+    .sec-head h2 { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .sec-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ── STAT CARDS ───────────────────────────────── */
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 14px; margin-bottom: 28px;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px; margin-bottom: 32px;
     }
     .stat-card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 18px 20px;
+      border-radius: var(--radius-lg);
+      padding: 20px 22px;
       position: relative; overflow: hidden;
     }
-    .stat-card::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      opacity: 0; transition: opacity .2s;
-    }
-    .stat-card:hover::before { opacity: 1; }
-    .stat-icon {
-      width: 36px; height: 36px; border-radius: 10px;
+    .stat-card .stat-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+    .stat-card .stat-icon {
+      width: 40px; height: 40px; border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 15px; margin-bottom: 12px;
+      font-size: 16px;
     }
-    .stat-val { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
-    .stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .5px; }
-    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .stat-card .stat-val { font-size: 28px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+    .stat-card .stat-label { font-size: 12px; color: var(--text-2); margin-top: 4px; font-weight: 500; }
+    .stat-card .stat-sub { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
 
-    /* ── SECTION HEADER ────────────────────────────────── */
-    .sec-head {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
-    }
-    .sec-head h3 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-    .sec-actions { display: flex; gap: 10px; align-items: center; }
-
-    /* ── TABLE ─────────────────────────────────────────── */
-    .card {
+    /* ── TABLE ────────────────────────────────────── */
+    .table-card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: var(--radius-lg);
       overflow: hidden;
     }
-    .search-bar {
-      padding: 14px 16px;
+    .table-toolbar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 20px;
       border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
     }
-    .search-bar input {
-      width: 100%; padding: 9px 14px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text); font-size: 13px;
-      font-family: var(--mono);
+    .table-toolbar input {
+      padding: 8px 14px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-size: 13px; font-family: inherit;
+      min-width: 220px; transition: .2s;
     }
-    .search-bar input:focus { outline: none; border-color: var(--accent); }
+    .table-toolbar input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.08); }
+    .table-toolbar .toolbar-count { font-size: 12px; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
     th {
-      text-align: left; padding: 10px 16px;
-      font-size: 10px; font-weight: 700; color: var(--muted);
-      text-transform: uppercase; letter-spacing: 1px;
+      text-align: left; padding: 12px 20px;
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px;
       background: var(--surface); border-bottom: 1px solid var(--border);
-      font-family: var(--mono); white-space: nowrap;
+      white-space: nowrap; font-family: var(--font);
     }
     td {
-      padding: 13px 16px;
-      border-bottom: 1px solid rgba(30,42,58,.6);
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(30,45,74,.5);
       font-size: 13px; vertical-align: middle;
     }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(0,212,255,.02); }
-    .org-name { font-weight: 700; font-size: 14px; }
-    .org-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+    tr:hover td { background: rgba(59,130,246,.02); }
+    .org-name { font-weight: 600; font-size: 14px; }
+    .org-meta { font-size: 11px; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
     .badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 9px; border-radius: 20px;
-      font-size: 10px; font-weight: 700; font-family: var(--mono);
-      text-transform: uppercase; letter-spacing: .5px;
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .2px;
     }
-    .badge-green  { background: rgba(0,230,118,.12); color: var(--success); }
-    .badge-red    { background: rgba(255,59,92,.12);  color: var(--danger); }
-    .badge-blue   { background: rgba(0,212,255,.12);  color: var(--accent); }
-    .badge-purple { background: rgba(124,58,237,.15); color: #a78bfa; }
-    .badge-yellow { background: rgba(255,171,0,.12);  color: var(--warn); }
-    .dot-active   { color: var(--success); }
-    .dot-inactive { color: var(--danger); }
+    .badge-green  { background: rgba(34,197,94,.1); color: var(--success); }
+    .badge-red    { background: rgba(239,68,68,.1); color: var(--danger); }
+    .badge-blue   { background: rgba(59,130,246,.1); color: var(--accent); }
+    .badge-purple { background: rgba(139,92,246,.1); color: #a78bfa; }
+    .badge-yellow { background: rgba(245,158,11,.1); color: var(--warn); }
+
     .feat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
     .feat-chip {
       padding: 2px 7px; border-radius: 4px; font-size: 10px;
       font-family: var(--mono); font-weight: 600;
     }
-    .feat-chip.on  { background: rgba(0,230,118,.1); color: var(--success); }
-    .feat-chip.off { background: rgba(255,59,92,.1);  color: var(--danger); text-decoration: line-through; }
+    .feat-chip.on  { background: rgba(34,197,94,.1); color: var(--success); }
+    .feat-chip.off { background: rgba(239,68,68,.1); color: var(--danger); text-decoration: line-through; }
 
     .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
 
     .empty-state {
-      padding: 60px 20px; text-align: center; color: var(--muted);
+      padding: 64px 20px; text-align: center; color: var(--muted);
     }
-    .empty-state i { font-size: 2.5rem; opacity: .3; display: block; margin-bottom: 12px; }
+    .empty-state i { font-size: 2.5rem; opacity: .25; display: block; margin-bottom: 12px; }
+    .empty-state p { font-size: 13px; }
     .spinner {
       width: 28px; height: 28px; border-radius: 50%;
       border: 2px solid var(--border); border-top-color: var(--accent);
-      animation: spin .8s linear infinite; display: inline-block;
+      animation: spin .7s linear infinite; display: inline-block;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── MODALS ────────────────────────────────────────── */
-    .modal-overlay {
-      display: none; position: fixed; inset: 0; z-index: 1000;
-      background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
-      align-items: center; justify-content: center; padding: 20px;
-    }
-    .modal-overlay.open { display: flex; }
-    .modal {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 18px; width: 100%; max-width: 560px;
-      max-height: 90vh; overflow-y: auto;
-      box-shadow: 0 40px 80px rgba(0,0,0,.8);
-    }
-    .modal-wide { max-width: 740px; }
-    .modal-head {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 20px 24px 0;
-    }
-    .modal-title { font-size: 16px; font-weight: 800; }
-    .modal-close {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: var(--border); border: none; color: var(--muted);
-      cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;
-    }
-    .modal-close:hover { background: var(--danger); color: #fff; }
-    .modal-body { padding: 20px 24px 24px; }
-    .modal-footer {
-      display: flex; gap: 10px; justify-content: flex-end;
-      padding: 0 24px 20px;
-    }
-    .f-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .f-group { margin-bottom: 14px; }
-    .f-group label {
-      display: block; font-size: 10px; font-weight: 700; color: var(--muted);
-      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 7px;
-      font-family: var(--mono);
-    }
-    .f-group input, .f-group select, .f-group textarea {
-      width: 100%; padding: 10px 13px;
-      background: var(--card); border: 1.5px solid var(--border);
-      border-radius: 8px; color: var(--text); font-size: 13px;
-      font-family: var(--sans); transition: .15s;
-    }
-    .f-group input:focus, .f-group select:focus, .f-group textarea:focus {
-      outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,.08);
-    }
-    .f-group select option { background: var(--card); }
-    .f-group textarea { resize: vertical; min-height: 70px; }
-
-    /* ── FEATURE TOGGLES ───────────────────────────────── */
-    .feat-section { margin-bottom: 20px; }
-    .feat-section-title {
-      font-size: 10px; font-weight: 700; color: var(--muted);
-      text-transform: uppercase; letter-spacing: 1px;
-      font-family: var(--mono); margin-bottom: 10px;
-      padding-bottom: 6px; border-bottom: 1px solid var(--border);
-    }
-    .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-    .feat-toggle {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 13px;
+    /* ── REGISTRATION CARDS ───────────────────────── */
+    .reg-grid { display: flex; flex-direction: column; gap: 12px; }
+    .reg-card {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 9px; cursor: pointer; transition: .15s;
-      gap: 10px;
+      border-radius: var(--radius-lg); padding: 20px 22px;
+      display: flex; justify-content: space-between; gap: 20px;
+      align-items: flex-start; transition: border-color .15s;
     }
-    .feat-toggle:hover { border-color: var(--accent); }
-    .feat-toggle.enabled  { border-color: rgba(0,230,118,.3); background: rgba(0,230,118,.04); }
-    .feat-toggle.disabled { border-color: rgba(255,59,92,.2); opacity: .7; }
-    .feat-toggle-label { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
-    .feat-toggle-label i { color: var(--muted); width: 14px; }
-    .toggle-sw {
-      position: relative; width: 36px; height: 20px; flex-shrink: 0;
+    .reg-card:hover { border-color: var(--border-lt); }
+    .reg-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+    .reg-card .meta {
+      display: flex; flex-wrap: wrap; gap: 5px 18px; margin: 8px 0 4px;
     }
-    .toggle-sw input { opacity: 0; width: 0; height: 0; }
-    .toggle-track {
-      position: absolute; inset: 0; border-radius: 20px;
-      background: var(--border); transition: .2s; cursor: pointer;
+    .reg-card .meta span { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+    .reg-card .meta i { width: 14px; color: var(--text-2); }
+    .reg-card .msg { font-size: 13px; color: var(--text-2); margin-top: 8px; line-height: 1.6; }
+    .reg-card .msg:empty { display: none; }
+    .reg-card .reg-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+    .cat-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 5px;
+      font-size: 10px; font-weight: 700; font-family: var(--mono);
+      text-transform: uppercase; letter-spacing: .3px;
     }
-    .toggle-track::after {
-      content: ''; position: absolute;
-      left: 3px; top: 3px; width: 14px; height: 14px;
-      border-radius: 50%; background: var(--muted);
-      transition: .2s;
-    }
-    input:checked + .toggle-track { background: var(--success); }
-    input:checked + .toggle-track::after { transform: translateX(16px); background: #000; }
-    .limit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
-    .limit-field label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: block; font-family: var(--mono); }
-    .limit-field input { width: 100%; padding: 8px 11px; background: var(--card); border: 1.5px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 13px; }
-    .limit-field input:focus { outline: none; border-color: var(--accent); }
-    .limit-hint { font-size: 10px; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
+    .cat-badge.retail      { background: rgba(59,130,246,.1); color: var(--accent); }
+    .cat-badge.pharma      { background: rgba(139,92,246,.12); color: #a78bfa; }
+    .cat-badge.supermarket { background: rgba(34,197,94,.1); color: var(--success); }
+    .cat-badge.cosmetics   { background: rgba(245,158,11,.1); color: var(--warn); }
+    .cat-badge.wholesale   { background: rgba(239,68,68,.1); color: var(--danger); }
 
-    /* ── REQUESTS LOG ──────────────────────────────────── */
-    .req-list { display: flex; flex-direction: column; gap: 4px; }
+    /* ── HEALTH ────────────────────────────────────── */
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .health-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 22px 24px;
+    }
+    .health-card .h-title {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px;
+    }
+    .health-card .h-val {
+      font-size: 28px; font-weight: 800; font-family: var(--mono); line-height: 1;
+    }
+    .health-card .h-val.ok  { color: var(--success); }
+    .health-card .h-val.bad { color: var(--danger); }
+    .health-card .h-desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── REQUESTS LOG ─────────────────────────────── */
+    .req-list { display: flex; flex-direction: column; gap: 3px; }
     .req-row {
       display: grid;
-      grid-template-columns: 140px 56px 1fr 60px 70px;
-      align-items: center; gap: 10px;
-      padding: 8px 14px;
-      background: var(--card); border-radius: 8px;
+      grid-template-columns: 90px 52px 1fr 50px 50px;
+      align-items: center; gap: 8px;
+      padding: 7px 12px;
+      background: var(--card); border-radius: 6px;
       font-family: var(--mono); font-size: 11px;
-      border: 1px solid var(--border);
+      border: 1px solid transparent;
+      transition: border-color .15s;
     }
+    .req-row:hover { border-color: var(--border); }
     .req-ts   { color: var(--muted); }
     .req-meth { font-weight: 700; }
     .req-meth.GET    { color: var(--accent); }
@@ -365,53 +391,121 @@
     .req-status.err { color: var(--danger); }
     .req-ms { text-align: right; color: var(--muted); }
 
-    /* ── HEALTH PANEL ──────────────────────────────────── */
-    .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-    .health-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 14px; padding: 20px 22px;
+    /* ── MODALS ────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.7); backdrop-filter: blur(6px);
+      align-items: center; justify-content: center; padding: 20px;
     }
-    .health-card-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); margin-bottom: 14px; }
-    .health-val { font-size: 26px; font-weight: 800; font-family: var(--mono); }
-    .health-val.ok  { color: var(--success); }
-    .health-val.bad { color: var(--danger); }
-    .health-desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px; width: 100%; max-width: 580px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 40px 80px rgba(0,0,0,.6);
+    }
+    .modal-wide { max-width: 760px; }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px 28px 0;
+    }
+    .modal-title { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .modal-close {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--card); border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center; transition: .15s;
+    }
+    .modal-close:hover { background: rgba(239,68,68,.1); border-color: var(--danger); color: var(--danger); }
+    .modal-body { padding: 22px 28px; }
+    .modal-footer {
+      display: flex; gap: 10px; justify-content: flex-end;
+      padding: 0 28px 22px;
+    }
+    .f-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-    /* ── CONFIRM MODAL ─────────────────────────────────── */
-    #confirmModal .modal { max-width: 400px; text-align: center; padding: 32px 28px; }
+    .feat-section { margin-bottom: 22px; }
+    .feat-section-title {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px;
+      padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+    .feat-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; cursor: pointer; transition: .15s; gap: 10px;
+    }
+    .feat-toggle:hover { border-color: var(--border-lt); }
+    .feat-toggle.enabled  { border-color: rgba(34,197,94,.25); background: rgba(34,197,94,.03); }
+    .feat-toggle.disabled { border-color: rgba(239,68,68,.15); opacity: .65; }
+    .feat-toggle-label { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .feat-toggle-label i { color: var(--muted); width: 14px; }
+    .toggle-sw {
+      position: relative; width: 36px; height: 20px; flex-shrink: 0;
+    }
+    .toggle-sw input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0; border-radius: 20px;
+      background: var(--border); transition: .25s; cursor: pointer;
+    }
+    .toggle-track::after {
+      content: ''; position: absolute;
+      left: 3px; top: 3px; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--muted);
+      transition: .25s;
+    }
+    input:checked + .toggle-track { background: var(--success); }
+    input:checked + .toggle-track::after { transform: translateX(16px); background: #000; }
+    .limit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    .limit-field label { font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; display: block; }
+    .limit-field input { width: 100%; padding: 9px 12px; background: var(--card); border: 1.5px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 13px; }
+    .limit-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.08); }
+
+    /* ── CONFIRM MODAL ─────────────────────────────── */
+    #confirmModal .modal { max-width: 400px; text-align: center; padding: 36px 32px 32px; }
     #confirmModal .confirm-icon { font-size: 2.5rem; margin-bottom: 12px; }
-    #confirmModal h3 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+    #confirmModal h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
     #confirmModal p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
 
-    /* ── TOAST ─────────────────────────────────────────── */
+    /* ── TOAST ─────────────────────────────────────── */
     #toastContainer {
       position: fixed; bottom: 24px; right: 24px;
-      display: flex; flex-direction: column; gap: 10px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px; z-index: 9999;
     }
     .toast {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px 18px; border-radius: 12px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 18px; border-radius: 10px;
       font-size: 13px; font-weight: 600;
-      box-shadow: 0 8px 24px rgba(0,0,0,.5);
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
       animation: toastIn .2s ease;
-      min-width: 260px;
+      min-width: 260px; backdrop-filter: blur(8px);
     }
     @keyframes toastIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:none; } }
-    .toast-success { background: #0a2e1a; border: 1px solid var(--success); color: var(--success); }
-    .toast-error   { background: #2e0a14; border: 1px solid var(--danger);  color: var(--danger); }
-    .toast-info    { background: #0a1e2e; border: 1px solid var(--accent);  color: var(--accent); }
-    .toast-warn    { background: #2e1e0a; border: 1px solid var(--warn);    color: var(--warn); }
+    .toast-success { background: rgba(6,78,59,.9); border: 1px solid rgba(34,197,94,.3); color: var(--success); }
+    .toast-error   { background: rgba(127,29,29,.9); border: 1px solid rgba(239,68,68,.3); color: var(--danger); }
+    .toast-info    { background: rgba(30,58,138,.9); border: 1px solid rgba(59,130,246,.3); color: var(--accent); }
+    .toast-warn    { background: rgba(113,63,18,.9); border: 1px solid rgba(245,158,11,.3); color: var(--warn); }
 
-    /* ── RESPONSIVE ────────────────────────────────────── */
-    @media (max-width: 768px) {
-      .main { padding: 16px; }
-      .nav-tab span { display: none; }
-      .nav-tab { padding: 0 12px; }
+    /* ── RESPONSIVE ───────────────────────────────── */
+    @media (max-width: 900px) {
+      .sidebar { width: 60px; }
+      .sidebar-brand span, .sidebar-brand small,
+      .sidebar-nav a span, .sidebar-footer .user-info span { display: none; }
+      .sidebar-brand { justify-content: center; padding: 18px 10px 20px; }
+      .sidebar-nav a { justify-content: center; padding: 10px; }
+      .main-content { padding: 20px 16px; }
+      .topbar { padding: 0 16px; }
       .f-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .req-row { grid-template-columns: 1fr 1fr; }
-      .req-ts, .req-ms { display: none; }
-      th:nth-child(4), td:nth-child(4),
-      th:nth-child(5), td:nth-child(5) { display: none; }
+      .reg-card { flex-direction: column; }
+      .reg-card .reg-actions { width: 100%; }
+      .reg-card .reg-actions a { flex: 1; justify-content: center; }
     }
   </style>
 </head>
@@ -421,186 +515,229 @@
 <div id="loginScreen">
   <div class="login-box">
     <div class="login-logo">
-      <div class="ring">⚡</div>
-      <h1>Hulu Stock Owner</h1>
-      <p>SUPERADMIN · FULL CONTROL</p>
+      <div class="ring"><i class="fas fa-shield-halved"></i></div>
+      <h1>Admin Panel</h1>
+      <p>Hulu Stock · Owner Access</p>
     </div>
     <div class="f-group">
-      <label>Email</label>
-      <input type="email" id="loginEmail" placeholder="admin@example.com" />
+      <label><i class="far fa-envelope"></i> Email</label>
+      <input type="email" id="loginEmail" placeholder="admin@example.com" autocomplete="email" />
     </div>
     <div class="f-group">
-      <label>Password</label>
-      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+      <label><i class="fas fa-lock"></i> Password</label>
+      <input type="password" id="loginPass" placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
     </div>
     <button class="btn btn-primary btn-full" onclick="doLogin()" id="loginBtn">
-      <i class="fas fa-sign-in-alt"></i> Sign In
+      <i class="fas fa-arrow-right-to-bracket"></i> Sign In
     </button>
-    <div id="loginErr" style="color:var(--danger);font-size:12px;text-align:center;margin-top:12px;display:none;"></div>
+    <div id="loginErr" style="color:var(--danger);font-size:13px;text-align:center;margin-top:14px;display:none;"></div>
   </div>
 </div>
 
 <!-- ── APP SHELL ───────────────────────────────────────────────────────── -->
 <div id="appShell">
-  <nav class="topnav">
-    <div class="nav-brand">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
       <div class="dot"></div>
-      Hulu Stock OWNER
+      <span>Hulu Stock</span>
+      <small>Admin</small>
     </div>
-    <div class="nav-tabs">
-      <button class="nav-tab active" onclick="switchTab('orgs',this)" data-tab="orgs">
+    <nav class="sidebar-nav" id="sidebarNav">
+      <a href="#" class="active" onclick="switchTab('orgs')" data-tab="orgs">
         <i class="fas fa-building"></i><span>Organisations</span>
-      </button>
-      <button class="nav-tab" onclick="switchTab('performance',this)" data-tab="performance">
+      </a>
+      <a href="#" onclick="switchTab('registrations')" data-tab="registrations">
+        <i class="fas fa-user-plus"></i><span>Registrations</span>
+        <span class="nav-badge" id="regBadge" style="display:none">0</span>
+      </a>
+      <a href="#" onclick="switchTab('performance')" data-tab="performance">
         <i class="fas fa-chart-line"></i><span>Performance</span>
-      </button>
-      <button class="nav-tab" onclick="switchTab('requests',this)" data-tab="requests">
-        <i class="fas fa-stream"></i><span>Requests</span>
-      </button>
-    </div>
-    <div class="nav-right">
-      <div class="health-dot" id="healthDot" title="DB health"></div>
-      <button class="btn btn-ghost btn-sm" onclick="doLogout()">
-        <i class="fas fa-sign-out-alt"></i>
-      </button>
-    </div>
-  </nav>
-
-  <div class="main">
-
-    <!-- ── ORGANISATIONS TAB ──────────────────────────── -->
-    <div id="tab-orgs" class="tab-panel active">
-      <div class="stats-grid" id="statsGrid">
-        <div class="stat-card">
-          <div class="stat-icon" style="background:rgba(0,212,255,.1);color:var(--accent)"><i class="fas fa-building"></i></div>
-          <div class="stat-val" id="s-orgs">—</div>
-          <div class="stat-label">Total Orgs</div>
-          <div class="stat-sub" id="s-active-orgs" style="color:var(--success)"></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:rgba(124,58,237,.1);color:#a78bfa"><i class="fas fa-users"></i></div>
-          <div class="stat-val" id="s-users">—</div>
-          <div class="stat-label">Total Users</div>
-          <div class="stat-sub" id="s-active-users" style="color:var(--muted)"></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:rgba(0,230,118,.1);color:var(--success)"><i class="fas fa-cash-register"></i></div>
-          <div class="stat-val" id="s-sales">—</div>
-          <div class="stat-label">Total Sales</div>
-          <div class="stat-sub" id="s-week-sales" style="color:var(--muted)"></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:rgba(255,171,0,.1);color:var(--warn)"><i class="fas fa-code-branch"></i></div>
-          <div class="stat-val" id="s-branches">—</div>
-          <div class="stat-label">Branches</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:rgba(255,59,92,.1);color:var(--danger)"><i class="fas fa-coins"></i></div>
-          <div class="stat-val" id="s-revenue">—</div>
-          <div class="stat-label">Revenue</div>
-        </div>
+      </a>
+      <a href="#" onclick="switchTab('requests')" data-tab="requests">
+        <i class="fas fa-list"></i><span>Request Log</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <i class="fas fa-user-cog"></i>
+        <span>bereket@onyx.com</span>
       </div>
+    </div>
+  </aside>
 
-      <div class="sec-head">
-        <h3><i class="fas fa-building" style="color:var(--accent)"></i> Organisations</h3>
-        <div class="sec-actions">
-          <button class="btn btn-ghost btn-sm" onclick="loadOrgs()"><i class="fas fa-sync-alt"></i></button>
-          <button class="btn btn-primary btn-sm" onclick="openCreateModal()">
-            <i class="fas fa-plus"></i> New Org
-          </button>
-        </div>
+  <!-- MAIN -->
+  <div class="main-wrap">
+    <header class="topbar">
+      <div class="topbar-title" id="topbarTitle">
+        <i class="fas fa-building"></i> Organisations
       </div>
-
-      <div class="card">
-        <div class="search-bar">
-          <input type="text" id="searchInput" placeholder="Search organisations…" oninput="filterTable()" />
+      <div class="topbar-actions">
+        <div class="health-indicator">
+          <span class="pulse" id="healthDot" title="Database status"></span>
+          <span id="healthText">Checking…</span>
         </div>
-        <div class="table-wrap">
-          <div id="tableBody">
-            <div class="empty-state"><div class="spinner"></div><p style="margin-top:16px">Loading…</p></div>
+        <button class="btn btn-ghost2 btn-icon" onclick="doLogout()" title="Sign out">
+          <i class="fas fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="main-content">
+
+      <!-- ── ORGS TAB ──────────────────────────────── -->
+      <div id="tab-orgs" class="tab-panel active">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon" style="background:rgba(59,130,246,.1);color:var(--accent)"><i class="fas fa-building"></i></div>
+            </div>
+            <div class="stat-val" id="s-orgs">—</div>
+            <div class="stat-label">Total Organisations</div>
+            <div class="stat-sub" id="s-active-orgs"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon" style="background:rgba(139,92,246,.1);color:#a78bfa"><i class="fas fa-users"></i></div>
+            </div>
+            <div class="stat-val" id="s-users">—</div>
+            <div class="stat-label">Total Users</div>
+            <div class="stat-sub" id="s-active-users"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon" style="background:rgba(34,197,94,.1);color:var(--success)"><i class="fas fa-cash-register"></i></div>
+            </div>
+            <div class="stat-val" id="s-sales">—</div>
+            <div class="stat-label">Total Sales</div>
+            <div class="stat-sub" id="s-week-sales"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon" style="background:rgba(245,158,11,.1);color:var(--warn)"><i class="fas fa-code-branch"></i></div>
+            </div>
+            <div class="stat-val" id="s-branches">—</div>
+            <div class="stat-label">Branches</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon" style="background:rgba(239,68,68,.1);color:var(--danger)"><i class="fas fa-coins"></i></div>
+            </div>
+            <div class="stat-val" id="s-revenue">—</div>
+            <div class="stat-label">Total Revenue</div>
+          </div>
+        </div>
+
+        <div class="sec-head">
+          <h2><i class="fas fa-building" style="color:var(--accent)"></i> Organisations</h2>
+          <div class="sec-actions">
+            <button class="btn btn-ghost btn-sm" onclick="loadOrgs()"><i class="fas fa-rotate"></i></button>
+            <button class="btn btn-primary btn-sm" onclick="openCreateModal()">
+              <i class="fas fa-plus"></i> New Organisation
+            </button>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-toolbar">
+            <input type="text" id="searchInput" placeholder="Search organisations by name…" oninput="filterTable()" />
+            <span class="toolbar-count" id="orgCount"></span>
+          </div>
+          <div class="table-wrap">
+            <div id="tableBody">
+              <div class="empty-state"><div class="spinner"></div><p style="margin-top:16px">Loading organisations…</p></div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- ── PERFORMANCE TAB ─────────────────────────────── -->
-    <div id="tab-performance" class="tab-panel">
-      <div class="sec-head">
-        <h3><i class="fas fa-heartbeat" style="color:var(--success)"></i> System Health</h3>
-        <button class="btn btn-ghost btn-sm" onclick="loadHealth()"><i class="fas fa-sync-alt"></i></button>
-      </div>
-      <div class="health-grid" id="healthGrid">
-        <div class="empty-state"><div class="spinner"></div></div>
-      </div>
-    </div>
-
-    <!-- ── REQUESTS TAB ────────────────────────────────── -->
-    <div id="tab-requests" class="tab-panel">
-      <div class="sec-head">
-        <h3><i class="fas fa-stream" style="color:var(--accent2)"></i> Recent API Requests</h3>
-        <div class="sec-actions">
-          <button class="btn btn-ghost btn-sm" onclick="loadRequests()"><i class="fas fa-sync-alt"></i></button>
+      <!-- ── REGISTRATIONS TAB ───────────────────────── -->
+      <div id="tab-registrations" class="tab-panel">
+        <div class="sec-head">
+          <h2><i class="fas fa-user-plus" style="color:var(--accent)"></i> Registration Requests</h2>
+          <div class="sec-actions">
+            <button class="btn btn-ghost btn-sm" onclick="loadRegistrations()"><i class="fas fa-rotate"></i></button>
+          </div>
+        </div>
+        <div id="regList">
+          <div class="empty-state"><div class="spinner"></div></div>
         </div>
       </div>
-      <div class="card" style="padding:14px;">
-        <div id="reqList">
-          <div class="empty-state"><p>No requests logged yet this session.</p></div>
+
+      <!-- ── PERFORMANCE TAB ─────────────────────────── -->
+      <div id="tab-performance" class="tab-panel">
+        <div class="sec-head">
+          <h2><i class="fas fa-heartbeat" style="color:var(--success)"></i> System Health</h2>
+          <button class="btn btn-ghost btn-sm" onclick="loadHealth()"><i class="fas fa-rotate"></i></button>
+        </div>
+        <div class="health-grid" id="healthGrid">
+          <div class="empty-state"><div class="spinner"></div></div>
         </div>
       </div>
-    </div>
 
-  </div><!-- /main -->
+      <!-- ── REQUEST LOG TAB ─────────────────────────── -->
+      <div id="tab-requests" class="tab-panel">
+        <div class="sec-head">
+          <h2><i class="fas fa-list" style="color:var(--accent2)"></i> API Request Log</h2>
+          <div class="sec-actions">
+            <button class="btn btn-ghost btn-sm" onclick="loadRequests()"><i class="fas fa-rotate"></i></button>
+          </div>
+        </div>
+        <div class="table-card" style="padding:14px;">
+          <div id="reqList">
+            <div class="empty-state"><p>No requests logged yet this session.</p></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-content -->
+  </div><!-- /main-wrap -->
 </div><!-- /appShell -->
 
 <!-- ── CREATE ORG MODAL ────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="createModal">
   <div class="modal">
     <div class="modal-head">
-      <div class="modal-title">➕ New Organisation</div>
+      <div class="modal-title"><i class="fas fa-plus-circle" style="color:var(--success)"></i> New Organisation</div>
       <button class="modal-close" onclick="closeCreateModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="f-row">
-        <div class="f-group"><label>Org Name *</label><input id="cName" placeholder="Acme Store" /></div>
+        <div class="f-group"><label>Organisation Name *</label><input id="cName" placeholder="e.g. Acme Store" /></div>
         <div class="f-group"><label>Currency</label>
           <select id="cCurrency">
-            <option value="ETB">ETB — Ethiopian Birr</option>
-            <option value="USD">USD — US Dollar</option>
-            <option value="EUR">EUR — Euro</option>
-            <option value="GBP">GBP — British Pound</option>
-            <option value="KES">KES — Kenyan Shilling</option>
-            <option value="NGN">NGN — Nigerian Naira</option>
+            <option value="ETB">ETB — Ethiopian Birr</option> <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option> <option value="GBP">GBP — British Pound</option>
+            <option value="KES">KES — Kenyan Shilling</option> <option value="NGN">NGN — Nigerian Naira</option>
             <option value="ZAR">ZAR — South African Rand</option>
           </select>
         </div>
       </div>
       <div class="f-row">
         <div class="f-group"><label>Admin Email *</label><input id="cEmail" type="email" placeholder="admin@store.com" /></div>
-        <div class="f-group"><label>Admin Password *</label><input id="cPass" type="password" placeholder="min 8 chars" /></div>
+        <div class="f-group"><label>Admin Password *</label><input id="cPass" type="password" placeholder="Minimum 8 characters" /></div>
       </div>
       <div class="f-row">
-        <div class="f-group"><label>Admin Name</label><input id="cAdminName" placeholder="Store Admin" /></div>
+        <div class="f-group"><label>Admin Name</label><input id="cAdminName" placeholder="Store Administrator" /></div>
         <div class="f-group"><label>Plan</label>
           <select id="cPlan">
-            <option value="basic">Basic</option>
-            <option value="pro">Pro</option>
-            <option value="enterprise">Enterprise</option>
-          </select>
-        </div>
-        <div class="f-group"><label>Tenant Mode</label>
-          <select id="cTenantType">
-            <option value="retail">Retail</option>
-            <option value="pharma">Pharmacy</option>
-            <option value="cosmetics">Cosmetics</option>
-            <option value="supermarket">Supermarket</option>
+            <option value="basic">Basic</option> <option value="pro">Pro</option> <option value="enterprise">Enterprise</option>
           </select>
         </div>
       </div>
       <div class="f-row">
+        <div class="f-group"><label>Tenant Mode</label>
+          <select id="cTenantType">
+            <option value="retail">Retail</option> <option value="pharma">Pharmacy</option>
+            <option value="cosmetics">Cosmetics</option> <option value="supermarket">Supermarket</option>
+          </select>
+        </div>
         <div class="f-group"><label>Tax %</label><input id="cTax" type="number" value="0" min="0" max="100" /></div>
-        <div class="f-group"><label>Brand Color</label><input id="cColor" type="color" value="#2563EB" style="height:42px;padding:4px;" /></div>
       </div>
-      <div class="f-group"><label>Internal Notes</label><textarea id="cNotes" placeholder="Anything to remember about this org…"></textarea></div>
+      <div class="f-row">
+        <div class="f-group"><label>Brand Color</label><input id="cColor" type="color" value="#2563EB" style="height:42px;padding:4px;" /></div>
+        <div class="f-group"><label>Internal Notes</label><textarea id="cNotes" placeholder="Any notes about this organisation" rows="2"></textarea></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
@@ -613,45 +750,41 @@
 <div class="modal-overlay" id="editModal">
   <div class="modal">
     <div class="modal-head">
-      <div class="modal-title">✏️ Edit Organisation</div>
+      <div class="modal-title"><i class="fas fa-pen-to-square" style="color:var(--warn)"></i> Edit Organisation</div>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="eId" />
       <div class="f-row">
-        <div class="f-group"><label>Org Name</label><input id="eName" /></div>
+        <div class="f-group"><label>Organisation Name</label><input id="eName" /></div>
         <div class="f-group"><label>Currency</label>
           <select id="eCurrency">
-            <option value="ETB">ETB</option><option value="USD">USD</option>
-            <option value="EUR">EUR</option><option value="GBP">GBP</option>
-            <option value="KES">KES</option><option value="NGN">NGN</option>
-            <option value="ZAR">ZAR</option>
+            <option value="ETB">ETB</option><option value="USD">USD</option><option value="EUR">EUR</option>
+            <option value="GBP">GBP</option><option value="KES">KES</option><option value="NGN">NGN</option><option value="ZAR">ZAR</option>
           </select>
         </div>
       </div>
       <div class="f-row">
         <div class="f-group"><label>Plan</label>
           <select id="ePlan">
-            <option value="basic">Basic</option>
-            <option value="pro">Pro</option>
-            <option value="enterprise">Enterprise</option>
+            <option value="basic">Basic</option><option value="pro">Pro</option><option value="enterprise">Enterprise</option>
           </select>
         </div>
         <div class="f-group"><label>Tax %</label><input id="eTax" type="number" min="0" max="100" /></div>
+      </div>
+      <div class="f-row">
         <div class="f-group"><label>Tenant Mode</label>
           <select id="eTenantType">
-            <option value="retail">Retail</option>
-            <option value="pharma">Pharmacy</option>
-            <option value="cosmetics">Cosmetics</option>
-            <option value="supermarket">Supermarket</option>
+            <option value="retail">Retail</option><option value="pharma">Pharmacy</option>
+            <option value="cosmetics">Cosmetics</option><option value="supermarket">Supermarket</option>
           </select>
         </div>
+        <div class="f-group"><label>Internal Notes</label><textarea id="eNotes" rows="2"></textarea></div>
       </div>
-      <div class="f-group"><label>Internal Notes</label><textarea id="eNotes"></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitEdit()"><i class="fas fa-save"></i> Save</button>
+      <button class="btn btn-primary" onclick="submitEdit()"><i class="fas fa-save"></i> Save Changes</button>
     </div>
   </div>
 </div>
@@ -660,14 +793,14 @@
 <div class="modal-overlay" id="featModal">
   <div class="modal modal-wide">
     <div class="modal-head">
-      <div class="modal-title">🔧 Feature Permissions — <span id="featOrgName" style="color:var(--accent)"></span></div>
+      <div class="modal-title"><i class="fas fa-sliders" style="color:var(--accent)"></i> Feature Permissions — <span id="featOrgName" style="color:var(--accent);font-weight:800;"></span></div>
       <button class="modal-close" onclick="closeFeatModal()">✕</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="featOrgId" />
 
       <div class="feat-section">
-        <div class="feat-section-title">Core Features</div>
+        <div class="feat-section-title"><i class="fas fa-cubes" style="margin-right:4px;"></i> Core Features</div>
         <div class="feat-grid">
           <label class="feat-toggle" id="ft-branches">
             <span class="feat-toggle-label"><i class="fas fa-code-branch"></i> Branch Management</span>
@@ -697,7 +830,7 @@
       </div>
 
       <div class="feat-section">
-        <div class="feat-section-title">AI & Scanning</div>
+        <div class="feat-section-title"><i class="fas fa-microchip" style="margin-right:4px;"></i> AI &amp; Scanning</div>
         <div class="feat-grid">
           <label class="feat-toggle" id="ft-ai_scan">
             <span class="feat-toggle-label"><i class="fas fa-robot"></i> AI Smart Scan</span>
@@ -708,18 +841,18 @@
             <span class="toggle-sw"><input type="checkbox" id="ff-fast_scan" onchange="updateFeatToggle('fast_scan',this)"><span class="toggle-track"></span></span>
           </label>
           <label class="feat-toggle" id="ft-smart_scan">
-            <span class="feat-toggle-label"><i class="fas fa-magic"></i> Bulk Smart Scan</span>
+            <span class="feat-toggle-label"><i class="fas fa-wand-magic-sparkles"></i> Bulk Smart Scan</span>
             <span class="toggle-sw"><input type="checkbox" id="ff-smart_scan" onchange="updateFeatToggle('smart_scan',this)"><span class="toggle-track"></span></span>
           </label>
           <label class="feat-toggle" id="ft-phone_camera">
-            <span class="feat-toggle-label"><i class="fas fa-mobile-alt"></i> Phone Camera</span>
+            <span class="feat-toggle-label"><i class="fas fa-camera"></i> Phone Camera</span>
             <span class="toggle-sw"><input type="checkbox" id="ff-phone_camera" onchange="updateFeatToggle('phone_camera',this)"><span class="toggle-track"></span></span>
           </label>
         </div>
       </div>
 
       <div class="feat-section">
-        <div class="feat-section-title">Notifications</div>
+        <div class="feat-section-title"><i class="fas fa-bell" style="margin-right:4px;"></i> Notifications</div>
         <div class="feat-grid">
           <label class="feat-toggle" id="ft-push_notifications">
             <span class="feat-toggle-label"><i class="fas fa-bell"></i> Push Notifications</span>
@@ -729,17 +862,17 @@
       </div>
 
       <div class="feat-section">
-        <div class="feat-section-title">Limits <span style="color:var(--muted);font-weight:400;">(0 = unlimited)</span></div>
+        <div class="feat-section-title"><i class="fas fa-gauge-high" style="margin-right:4px;"></i> Limits <span style="color:var(--muted);font-weight:400;">(0 = unlimited)</span></div>
         <div class="limit-row">
           <div class="limit-field">
             <label>Max Branches</label>
             <input type="number" id="ff-max_branches" min="0" placeholder="0 = unlimited" />
-            <div class="limit-hint">0 means no limit</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;font-family:var(--mono);">0 means no limit</div>
           </div>
           <div class="limit-field">
             <label>Max Users</label>
             <input type="number" id="ff-max_users" min="0" placeholder="0 = unlimited" />
-            <div class="limit-hint">0 means no limit</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;font-family:var(--mono);">0 means no limit</div>
           </div>
         </div>
       </div>
@@ -786,7 +919,7 @@ async function doLogin() {
   const btn = document.getElementById('loginBtn');
   const err = document.getElementById('loginErr');
   err.style.display = 'none';
-  btn.disabled = true; btn.innerHTML = '<div class="spinner" style="width:18px;height:18px;"></div>';
+  btn.disabled = true; btn.innerHTML = '<div class="spinner" style="width:20px;height:20px;"></div>';
   try {
     const res = await fetch(`${API}/superadmin/login`, {
       method: 'POST',
@@ -806,13 +939,13 @@ async function doLogin() {
   } catch (e) {
     const msg = (e && e.message) || 'Login failed';
     if (msg.includes('Failed to fetch') || e instanceof TypeError) {
-      err.textContent = `Cannot reach the backend at ${API}. If the backend log shows 401/Unauthorized, verify SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD. If the browser says Failed to fetch, also add this frontend origin (${window.location.origin}) to FRONTEND_URL or ALLOWED_ORIGINS on the backend.`;
+      err.textContent = 'Cannot reach the backend. Verify the API URL and CORS configuration.';
     } else {
       err.textContent = msg;
     }
     err.style.display = 'block';
   } finally {
-    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-arrow-right-to-bracket"></i> Sign In';
   }
 }
 
@@ -839,17 +972,40 @@ function bootPanel() {
   loadStats();
   loadOrgs();
   checkHealth();
+  loadRegistrations();
+  updateBadge();
   setInterval(checkHealth, 30000);
 }
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
-function switchTab(name, el) {
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.sidebar-nav a').forEach(t => t.classList.remove('active'));
   document.getElementById(`tab-${name}`).classList.add('active');
-  el.classList.add('active');
+  document.querySelector(`.sidebar-nav a[data-tab="${name}"]`)?.classList.add('active');
+
+  const titles = { orgs:'Organisations', registrations:'Registration Requests', performance:'System Health', requests:'API Request Log' };
+  const icons  = { orgs:'fa-building', registrations:'fa-user-plus', performance:'fa-heartbeat', requests:'fa-list' };
+  document.getElementById('topbarTitle').innerHTML =
+    `<i class="fas ${icons[name] || 'fa-building'}"></i> ${titles[name] || 'Organisations'}`;
+
   if (name === 'performance') loadHealth();
   if (name === 'requests')    loadRequests();
+  if (name === 'registrations') { loadRegistrations(); updateBadge(); }
+}
+
+// ─── Badge update ─────────────────────────────────────────────────────────────
+async function updateBadge() {
+  try {
+    const reqs = await sa('/register-requests');
+    const badge = document.getElementById('regBadge');
+    if (reqs.length) {
+      badge.textContent = reqs.length;
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (_) {}
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -871,7 +1027,7 @@ async function loadStats() {
 // ─── Orgs table ───────────────────────────────────────────────────────────────
 async function loadOrgs() {
   document.getElementById('tableBody').innerHTML =
-    '<div class="empty-state"><div class="spinner"></div><p style="margin-top:16px">Loading…</p></div>';
+    '<div class="empty-state"><div class="spinner"></div><p style="margin-top:16px">Loading organisations…</p></div>';
   try {
     allOrgs = await sa('/organizations');
     renderTable(allOrgs);
@@ -883,6 +1039,7 @@ async function loadOrgs() {
 }
 
 function renderTable(orgs) {
+  document.getElementById('orgCount').textContent = orgs.length + ' org' + (orgs.length !== 1 ? 's' : '');
   if (!orgs.length) {
     document.getElementById('tableBody').innerHTML =
       '<div class="empty-state"><i class="fas fa-building"></i><p>No organisations yet</p></div>';
@@ -896,7 +1053,6 @@ function renderTable(orgs) {
 
     const planColor = { basic:'badge-blue', pro:'badge-purple', enterprise:'badge-yellow' }[o.subscription_plan] || 'badge-blue';
 
-    // Show top features state as chips
     const featureKeys = ['ai_scan','fast_scan','branches','reports','expenses'];
     const chips = featureKeys.map(k =>
       `<span class="feat-chip ${f[k] !== false ? 'on' : 'off'}">${k.replace('_',' ')}</span>`
@@ -911,7 +1067,7 @@ function renderTable(orgs) {
       <td>
         <div class="org-name">${esc(o.name)}</div>
         <div class="org-meta">${esc(o.tenant_type||'retail')} · ${esc(o.currency||'ETB')} · Tax ${o.tax_percentage||0}% · ${o.branch_count||0} branch · ${o.user_count||0} user</div>
-        ${o.notes ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;font-style:italic;">${esc(o.notes)}</div>` : ''}
+        ${o.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;font-style:italic;">${esc(o.notes)}</div>` : ''}
       </td>
       <td>${statusBadge}</td>
       <td><span class="badge ${planColor}">${o.subscription_plan||'basic'}</span></td>
@@ -919,19 +1075,19 @@ function renderTable(orgs) {
         <div class="feat-chips">${chips}</div>
         ${limitStr}
       </td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--muted);">${o.total_sales||0} sales</td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--muted);">${o.total_sales||0} sales</td>
       <td>
         <div class="actions-cell">
-          <button class="btn btn-outline btn-xs" onclick="openFeatModal('${o.id}')">
-            <i class="fas fa-sliders-h"></i> Perms
+          <button class="btn btn-ghost btn-xs" onclick="openFeatModal('${o.id}')" title="Permissions">
+            <i class="fas fa-sliders"></i>
           </button>
-          <button class="btn btn-ghost btn-xs" onclick="openEditModal('${o.id}')">
+          <button class="btn btn-ghost btn-xs" onclick="openEditModal('${o.id}')" title="Edit">
             <i class="fas fa-pen"></i>
           </button>
-          <button class="btn btn-xs ${o.is_active ? 'btn-warn' : 'btn-success'}" onclick="toggleOrg('${o.id}','${esc(o.name)}',${o.is_active})">
+          <button class="btn btn-xs ${o.is_active ? 'btn-warn' : 'btn-success'}" onclick="toggleOrg('${o.id}','${esc(o.name)}',${o.is_active})" title="${o.is_active ? 'Suspend' : 'Activate'}">
             ${o.is_active ? '<i class="fas fa-ban"></i>' : '<i class="fas fa-check"></i>'}
           </button>
-          <button class="btn btn-danger btn-xs" onclick="confirmDelete('${o.id}','${esc(o.name)}')">
+          <button class="btn btn-danger btn-xs" onclick="confirmDelete('${o.id}','${esc(o.name)}')" title="Delete">
             <i class="fas fa-trash"></i>
           </button>
         </div>
@@ -947,7 +1103,7 @@ function renderTable(orgs) {
         <th>Plan</th>
         <th>Features</th>
         <th>Sales</th>
-        <th>Actions</th>
+        <th style="width:170px">Actions</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -986,7 +1142,7 @@ async function submitCreate() {
       tenant_type:       document.getElementById('cTenantType').value,
       notes:             document.getElementById('cNotes').value.trim(),
     });
-    toast('Organisation created!', 'success');
+    toast('Organisation created successfully', 'success');
     closeCreateModal();
     loadOrgs();
   } catch (e) { toast(e.message, 'error'); }
@@ -1018,14 +1174,14 @@ async function submitEdit() {
       tenant_type:       document.getElementById('eTenantType').value,
       notes:             document.getElementById('eNotes').value.trim(),
     });
-    toast('Organisation updated!', 'success');
+    toast('Organisation updated', 'success');
     closeEditModal();
     loadOrgs();
   } catch (e) { toast(e.message, 'error'); }
 }
 
 // ─── Features modal ───────────────────────────────────────────────────────────
-let _featState = {};   // current in-memory feature state while modal is open
+let _featState = {};
 
 function openFeatModal(id) {
   const o = allOrgs.find(x => x.id === id);
@@ -1034,7 +1190,6 @@ function openFeatModal(id) {
   document.getElementById('featOrgId').value  = id;
   document.getElementById('featOrgName').textContent = o.name;
 
-  // Set toggle states
   const boolKeys = ['branches','multi_user','ai_scan','fast_scan','smart_scan',
                     'reports','expenses','suppliers','export','push_notifications','phone_camera'];
   boolKeys.forEach(k => {
@@ -1072,7 +1227,7 @@ async function saveFeatModal() {
   _featState.max_users    = parseInt(document.getElementById('ff-max_users').value)    || 0;
   try {
     await sa(`/organizations/${id}/features`, 'PATCH', _featState);
-    toast('Permissions saved!', 'success');
+    toast('Permissions saved', 'success');
     closeFeatModal();
     loadOrgs();
   } catch (e) { toast(e.message, 'error'); }
@@ -1082,12 +1237,12 @@ async function saveFeatModal() {
 function toggleOrg(id, name, isActive) {
   const action = isActive ? 'Suspend' : 'Activate';
   const msg    = isActive
-    ? `Suspending "${name}" will block all logins for this organisation.`
-    : `Activating "${name}" will restore full access.`;
-  showConfirm(isActive ? '⚠️' : '✅', `${action} "${name}"?`, msg, async () => {
+    ? `Suspending <strong>"${esc(name)}"</strong> will block all logins for this organisation.`
+    : `Activating <strong>"${esc(name)}"</strong> will restore full access.`;
+  showConfirm(isActive ? '🚫' : '✅', `${action} "${name}"?`, msg, async () => {
     try {
       await sa(`/organizations/${id}/toggle`, 'PATCH');
-      toast(`Organisation ${action.toLowerCase()}d.`, isActive ? 'warn' : 'success');
+      toast(`Organisation ${action.toLowerCase()}d`, isActive ? 'warn' : 'success');
       loadOrgs();
     } catch (e) { toast(e.message, 'error'); }
   });
@@ -1095,11 +1250,11 @@ function toggleOrg(id, name, isActive) {
 
 function confirmDelete(id, name) {
   showConfirm('🗑️', `Delete "${name}"?`,
-    'This permanently deletes the organisation, all branches, users and data. This cannot be undone.',
+    'This permanently deletes the organisation, all branches, users, and data. <strong>This cannot be undone.</strong>',
     async () => {
       try {
         await sa(`/organizations/${id}`, 'DELETE');
-        toast('Organisation deleted.', 'error');
+        toast('Organisation deleted', 'error');
         loadOrgs();
       } catch (e) { toast(e.message, 'error'); }
     }
@@ -1111,9 +1266,15 @@ async function checkHealth() {
   try {
     const h = await sa('/health');
     const dot = document.getElementById('healthDot');
-    dot.className = `health-dot ${h.db_ok ? 'ok' : 'degraded'}`;
-    dot.title = `DB: ${h.db_ok ? 'OK' : 'ERROR'} (${h.db_ms}ms)`;
-  } catch (_) {}
+    const txt = document.getElementById('healthText');
+    dot.className = `pulse ${h.db_ok ? 'ok' : 'err'}`;
+    txt.textContent = h.db_ok ? 'DB Connected' : 'DB Error';
+    txt.style.color = h.db_ok ? 'var(--success)' : 'var(--danger)';
+  } catch (_) {
+    document.getElementById('healthDot').className = 'pulse err';
+    document.getElementById('healthText').textContent = 'Offline';
+    document.getElementById('healthText').style.color = 'var(--danger)';
+  }
 }
 
 async function loadHealth() {
@@ -1124,34 +1285,34 @@ async function loadHealth() {
     const s = await sa('/stats');
     grid.innerHTML = `
       <div class="health-card">
-        <div class="health-card-title">Database</div>
-        <div class="health-val ${h.db_ok ? 'ok' : 'bad'}">${h.db_ok ? 'Online' : 'Error'}</div>
-        <div class="health-desc">Response: ${h.db_ms}ms</div>
+        <div class="h-title">Database</div>
+        <div class="h-val ${h.db_ok ? 'ok' : 'bad'}">${h.db_ok ? 'Connected' : 'Error'}</div>
+        <div class="h-desc">Response: ${h.db_ms}ms</div>
       </div>
       <div class="health-card">
-        <div class="health-card-title">Active Organisations</div>
-        <div class="health-val ok">${s.active_orgs} / ${s.total_orgs}</div>
-        <div class="health-desc">${s.total_orgs - s.active_orgs} suspended</div>
+        <div class="h-title">Active Organisations</div>
+        <div class="h-val ok">${s.active_orgs} / ${s.total_orgs}</div>
+        <div class="h-desc">${s.total_orgs - s.active_orgs} suspended</div>
       </div>
       <div class="health-card">
-        <div class="health-card-title">Active Users</div>
-        <div class="health-val ok">${s.active_users} / ${s.total_users}</div>
-        <div class="health-desc">across all orgs</div>
+        <div class="h-title">Active Users</div>
+        <div class="h-val ok">${s.active_users} / ${s.total_users}</div>
+        <div class="h-desc">across all organisations</div>
       </div>
       <div class="health-card">
-        <div class="health-card-title">Total Branches</div>
-        <div class="health-val ok">${s.total_branches}</div>
-        <div class="health-desc">across all orgs</div>
+        <div class="h-title">Total Branches</div>
+        <div class="h-val ok">${s.total_branches}</div>
+        <div class="h-desc">across all organisations</div>
       </div>
       <div class="health-card">
-        <div class="health-card-title">Sales This Week</div>
-        <div class="health-val ok">${s.sales_this_week}</div>
-        <div class="health-desc">${s.total_sales} all-time</div>
+        <div class="h-title">Sales This Week</div>
+        <div class="h-val ok">${s.sales_this_week}</div>
+        <div class="h-desc">${s.total_sales} all-time</div>
       </div>
       <div class="health-card">
-        <div class="health-card-title">Total Revenue</div>
-        <div class="health-val ok">${s.total_revenue?.toLocaleString()}</div>
-        <div class="health-desc">across all paid sales</div>
+        <div class="h-title">Total Revenue</div>
+        <div class="h-val ok">${s.total_revenue?.toLocaleString()}</div>
+        <div class="h-desc">across all paid sales</div>
       </div>
     `;
   } catch (e) {
@@ -1185,11 +1346,53 @@ async function loadRequests() {
   }
 }
 
+// ─── Registration Requests ────────────────────────────────────────────────
+async function loadRegistrations() {
+  const el = document.getElementById('regList');
+  el.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  try {
+    const reqs = await sa('/register-requests');
+    if (!reqs.length) {
+      el.innerHTML = '<div class="empty-state"><i class="fas fa-user-plus"></i><p>No registration requests yet.</p></div>';
+      return;
+    }
+    updateBadge();
+    el.innerHTML = '<div class="reg-grid">' + reqs.map(r => {
+      const ts = r.ts ? r.ts.slice(0, 16).replace('T', ' ') : '';
+      const catCls = (r.category || 'retail').toLowerCase().replace(/\s+/g, '');
+      return `<div class="reg-card">
+        <div style="min-width:0">
+          <h4>${esc(r.business_name)}</h4>
+          <div style="font-size:13px;color:var(--text-2);">${esc(r.full_name)}</div>
+          <div class="meta">
+            <span><i class="far fa-clock"></i> ${esc(ts)}</span>
+            <span><i class="fas fa-tag"></i> <span class="cat-badge ${catCls}">${esc(r.category||'retail')}</span></span>
+            <span><i class="fas fa-phone"></i> ${esc(r.phone)}</span>
+            <span><i class="fas fa-envelope"></i> ${esc(r.email)}</span>
+            ${r.address ? `<span><i class="fas fa-location-dot"></i> ${esc(r.address)}</span>` : ''}
+          </div>
+          <div class="msg">${esc(r.message)}</div>
+        </div>
+        <div class="reg-actions">
+          <a href="tel:${esc(r.phone)}" class="btn btn-success btn-sm" title="Call ${esc(r.phone)}">
+            <i class="fas fa-phone"></i> Call
+          </a>
+          <a href="mailto:${esc(r.email)}?subject=Hulu%20Stock%20Registration%20-%20${esc(encodeURIComponent(r.business_name))}" class="btn btn-primary btn-sm" title="Email ${esc(r.email)}">
+            <i class="fas fa-envelope"></i> Email
+          </a>
+        </div>
+      </div>`;
+    }).join('') + '</div>';
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>${esc(e.message)}</p></div>`;
+  }
+}
+
 // ─── Confirm modal ────────────────────────────────────────────────────────────
 function showConfirm(icon, title, msg, cb) {
   document.getElementById('confirmIcon').textContent  = icon;
-  document.getElementById('confirmTitle').textContent = title;
-  document.getElementById('confirmMsg').textContent   = msg;
+  document.getElementById('confirmTitle').innerHTML = title;
+  document.getElementById('confirmMsg').innerHTML   = msg;
   const ok = document.getElementById('confirmOk');
   ok.onclick = () => { closeConfirm(); cb(); };
   document.getElementById('confirmModal').classList.add('open');
@@ -1200,9 +1403,10 @@ function closeConfirm() { document.getElementById('confirmModal').classList.remo
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':type==='error'?'times-circle':type==='warn'?'exclamation-triangle':'info-circle'}"></i> ${esc(msg)}`;
+  const icons = { success:'fa-check-circle', error:'fa-times-circle', warn:'fa-exclamation-triangle', info:'fa-info-circle' };
+  el.innerHTML = `<i class="fas ${icons[type]||icons.info}"></i> ${esc(msg)}`;
   document.getElementById('toastContainer').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  setTimeout(() => el.remove(), 4000);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1211,7 +1415,7 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Restore token when redirected from the normal login page after a successful superadmin login.
+// Restore token
 const savedSuperToken = localStorage.getItem('xpos_superadmin_token');
 if (savedSuperToken) {
   token = savedSuperToken;
