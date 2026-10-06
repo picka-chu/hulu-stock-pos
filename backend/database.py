@@ -7,6 +7,7 @@ With robust error handling and connection pooling
 import os
 import asyncio
 import re
+from urllib.parse import urlparse
 from typing import Optional, List, Dict
 from uuid import UUID
 from datetime import datetime
@@ -16,8 +17,15 @@ from supabase import create_client, Client
 # ---------------------------
 # Environment / Config
 # ---------------------------
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+# Accept the repo's historical name plus Supabase's current server-side secret name.
+SUPABASE_SERVICE_KEY = (
+    os.getenv("SUPABASE_SERVICE_KEY")
+    or os.getenv("SUPABASE_SECRET_KEY")
+    or os.getenv("SUPABASE_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or ""
+).strip()
 
 # Offline/demo mode flag
 OFFLINE_MODE = False
@@ -25,6 +33,7 @@ OFFLINE_MODE = False
 # Connection state
 _connection_initialized = False
 _connection_error_count = 0
+_last_connection_error: Optional[str] = None
 MAX_CONNECTION_ERRORS = 5
 
 # Global Supabase admin client (service role - bypasses RLS)
@@ -36,7 +45,7 @@ _client_lock = asyncio.Lock()
 # ---------------------------
 async def get_supabase_client() -> Optional[Client]:
     """Get Supabase admin client with service role key (bypasses RLS)."""
-    global _supabase_admin, OFFLINE_MODE, _connection_initialized, _connection_error_count
+    global _supabase_admin, OFFLINE_MODE, _connection_initialized, _connection_error_count, _last_connection_error
     
     if _supabase_admin:
         return _supabase_admin
@@ -48,9 +57,16 @@ async def get_supabase_client() -> Optional[Client]:
         logger.info(f"[DB] Initializing Supabase admin client (service role)...")
         logger.info(f"[DB] SUPABASE_URL set: {bool(SUPABASE_URL)}")
         logger.info(f"[DB] SUPABASE_SERVICE_KEY set: {bool(SUPABASE_SERVICE_KEY)}")
-        
+
+        parsed = urlparse(SUPABASE_URL)
         if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-            logger.warning("Supabase admin client env vars missing, enabling offline mode")
+            _last_connection_error = "Supabase environment variables are missing"
+            logger.error("[DB] Missing SUPABASE_URL or server-side Supabase key")
+            OFFLINE_MODE = True
+            return None
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or "YOUR_PROJECT" in parsed.hostname:
+            _last_connection_error = "SUPABASE_URL is invalid; use https://<project-ref>.supabase.co"
+            logger.error("[DB] Invalid SUPABASE_URL configuration")
             OFFLINE_MODE = True
             return None
 
@@ -60,6 +76,7 @@ async def get_supabase_client() -> Optional[Client]:
             _connection_error_count = 0
             logger.success("Supabase admin client initialized successfully (bypasses RLS)")
         except Exception as e:
+            _last_connection_error = str(e)
             logger.error(f"Failed to initialize Supabase admin client: {e}")
             import traceback
             logger.error(traceback.format_exc())
@@ -71,17 +88,22 @@ async def get_supabase_client() -> Optional[Client]:
 
 
 async def reset_connection():
-    """Reset the database connection - useful after connection errors"""
-    global _supabase_admin, OFFLINE_MODE, _connection_error_count
-    
+    """Reset the database connection without recursively acquiring the same lock."""
+    global _supabase_admin, OFFLINE_MODE, _connection_error_count, _last_connection_error
     async with _client_lock:
         logger.info("[DB] Resetting database connection...")
         _supabase_admin = None
         OFFLINE_MODE = False
         _connection_error_count = 0
-        
-        # Try to reconnect
-        await get_supabase_client()
+        _last_connection_error = None
+
+    # Reconnect after releasing the lock; get_supabase_client() acquires it.
+    await get_supabase_client()
+
+
+def get_last_connection_error() -> Optional[str]:
+    """Return the latest Supabase connection/configuration error for API diagnostics."""
+    return _last_connection_error
 
 
 def is_offline_mode() -> bool:
@@ -94,14 +116,17 @@ def is_offline_mode() -> bool:
 # ---------------------------
 async def fetch_one(table: str, filters: Optional[Dict[str, any]] = None) -> Optional[dict]:
     """Fetch a single row from a table with optional filters."""
-    global _connection_error_count
+    global _connection_error_count, _last_connection_error
+    _last_connection_error = None
     
     if OFFLINE_MODE:
+        _last_connection_error = "Database is in offline mode"
         logger.warning(f"Offline mode: fetch_one skipped for table '{table}'")
         return None
 
     client = await get_supabase_client()
     if not client:
+        _last_connection_error = _last_connection_error or "Supabase client unavailable"
         logger.error("[DB] No Supabase client available")
         return None
 
@@ -121,6 +146,7 @@ async def fetch_one(table: str, filters: Optional[Dict[str, any]] = None) -> Opt
         return None
     except Exception as e:
         _connection_error_count += 1
+        _last_connection_error = str(e)
         logger.error(f"fetch_one failed on table '{table}': {e}")
         
         # Try to reset connection if too many errors
