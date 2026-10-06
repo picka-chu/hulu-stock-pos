@@ -76,7 +76,7 @@ async def get_dashboard_stats(
     try:
         q = client.table("sales").select("id, net_amount").eq(
             "organization_id", org_id
-        ).eq("payment_status", "paid").gte(
+        ).in_("payment_status", ["paid", "refunded"]).gte(
             "created_at", today_start
         ).lte("created_at", today_end)
         if user_branch_id:
@@ -197,7 +197,7 @@ async def get_recent_sales(
     try:
         q = client.table("sales").select("*").eq(
             "organization_id", org_id
-        ).eq("payment_status", "paid")
+        ).in_("payment_status", ["paid", "refunded"])
         if user_branch_id:
             q = q.eq("branch_id", user_branch_id)
         q = q.order("created_at", desc=True).limit(limit)
@@ -306,7 +306,7 @@ async def get_sales_chart(
     try:
         q = client.table("sales").select("net_amount, created_at").eq(
             "organization_id", org_id
-        ).eq("payment_status", "paid").gte("created_at", start_date)
+        ).in_("payment_status", ["paid", "refunded"]).gte("created_at", start_date)
         if user_branch_id:
             q = q.eq("branch_id", user_branch_id)
         resp = await asyncio.to_thread(lambda: q.execute())
