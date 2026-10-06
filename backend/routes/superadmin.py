@@ -50,6 +50,9 @@ _SA_ROLE = "superadmin"
 _request_log: list = []   # [{ts, path, method, status, ms}]
 _MAX_LOG = 500
 
+# ── In-memory registration requests ────────────────────────────────────────────
+_registration_requests: list = []  # [{id, ts, business_name, full_name, phone, email, address, category, message}]
+
 def log_request(path: str, method: str, status: int, ms: float):
     _request_log.append({
         "ts":     datetime.now(timezone.utc).isoformat(),
@@ -354,6 +357,39 @@ async def platform_stats(_: dict = Depends(require_superadmin)):
 @router.get("/requests")
 async def get_request_log(_: dict = Depends(require_superadmin)):
     return list(reversed(_request_log))
+
+
+# ── Registration requests (public ─ submit; superadmin ─ view) ─────────────────
+@router.post("/register-request")
+async def submit_registration_request(body: dict):
+    """Public endpoint — no auth required. Accepts a business registration request."""
+    business_name = (body.get("business_name") or "").strip()
+    full_name     = (body.get("full_name") or "").strip()
+    phone         = (body.get("phone") or "").strip()
+    email         = (body.get("email") or "").strip()
+
+    if not business_name or not full_name or not phone or not email:
+        raise HTTPException(status_code=400, detail="Business name, full name, phone and email are required")
+
+    req = {
+        "id":            str(uuid4()),
+        "ts":            datetime.now(timezone.utc).isoformat(),
+        "business_name": business_name,
+        "full_name":     full_name,
+        "phone":         phone,
+        "email":         email,
+        "address":       (body.get("address") or "").strip(),
+        "category":      body.get("category", "retail"),
+        "message":       (body.get("message") or "").strip(),
+    }
+    _registration_requests.append(req)
+    _salog.getLogger("superadmin").info(f"New registration request from {business_name} ({full_name}, {phone})")
+    return {"success": True, "message": "Registration request submitted. We will contact you within 24 hours."}
+
+
+@router.get("/register-requests")
+async def list_registration_requests(_: dict = Depends(require_superadmin)):
+    return list(reversed(_registration_requests))
 
 
 # ── Health / ping ─────────────────────────────────────────────────────────────
