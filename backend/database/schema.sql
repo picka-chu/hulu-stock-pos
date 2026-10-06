@@ -309,7 +309,7 @@ CREATE TABLE stock_movements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     item_id UUID NOT NULL REFERENCES items(id) ON DELETE CASCADE,
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('sale', 'restock', 'adjustment', 'return', 'transfer', 'expired')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('sale', 'restock', 'adjustment', 'return', 'transfer', 'expired', 'disposal')),
     quantity INTEGER NOT NULL,
     previous_quantity INTEGER NOT NULL,
     new_quantity INTEGER NOT NULL,
