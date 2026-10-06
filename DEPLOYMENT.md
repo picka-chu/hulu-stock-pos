@@ -17,7 +17,7 @@ Go to your Render backend service → Environment → Add the following:
 | `ENVIRONMENT` | `production` |
 | `JWT_SECRET` | *(the 128-char hex you generated above)* |
 | `SUPABASE_URL` | `https://YOUR_PROJECT.supabase.co` |
-| `SUPABASE_KEY` | *(your Supabase service role key)* |
+| `SUPABASE_SERVICE_KEY` | *(your Supabase server-side secret/service-role key)* |
 | `FRONTEND_URL` | `https://your-frontend.onrender.com` |
 | `SUPERADMIN_EMAIL` | `bereket@onyx.com` |
 | `SUPERADMIN_PASSWORD` | *(strong password, min 12 chars)* |
@@ -91,3 +91,17 @@ From here you can: create client organisations, activate/deactivate them, edit t
 1. Change `SUPERADMIN_PASSWORD` in your Render environment variables
 2. Redeploy (or restart the service)
 3. The new password takes effect immediately
+
+### Troubleshooting Render authentication / superadmin errors
+
+If normal login returns **401** while `/api/superadmin/login` still works, check the Render logs for Supabase connection errors. The backend now returns **503** when the database is unavailable instead of incorrectly reporting bad user credentials.
+
+If `/api/superadmin/stats` fails, the endpoint now returns **503** with a clear database-connection error instead of an unhandled 500.
+
+The backend accepts these server-side Supabase key variable names for compatibility:
+- `SUPABASE_SERVICE_KEY` (recommended for this app)
+- `SUPABASE_SECRET_KEY`
+- `SUPABASE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Use the actual Supabase project URL, for example `https://<project-ref>.supabase.co`. Do not put a server-side secret/service-role key in frontend JavaScript. Supabase recommends server-only secret keys for backend components.
