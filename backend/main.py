@@ -58,18 +58,20 @@ from routes import (
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from database import fetch_one, get_supabase_client
+    from database import fetch_one, get_supabase_client, get_last_connection_error
     logger.info("Hulu Stock starting up…")
 
     for attempt in range(3):
-        try:
-            await fetch_one("organizations", {})
+        await fetch_one("organizations", {})
+        db_err = get_last_connection_error()
+        if not db_err:
             logger.info("✅ Database connected")
             break
-        except Exception as e:
-            logger.warning(f"DB connect attempt {attempt+1}/3 failed: {e}")
-            if attempt < 2:
-                await asyncio.sleep(2)
+        logger.warning(f"DB connect attempt {attempt+1}/3 failed: {db_err}")
+        if attempt < 2:
+            await asyncio.sleep(2)
+    else:
+        logger.error("❌ Database unreachable — API running degraded. Check SUPABASE_URL/key and table GRANTs (migration_029).")
 
     task = asyncio.create_task(_keep_alive())
     yield
