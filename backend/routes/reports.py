@@ -877,7 +877,7 @@ async def get_sales_export(
 @router.get("/inventory-export")
 async def export_inventory(
     branch_id: str = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_manager)
 ):
     """
     Export full inventory as CSV, scoped to branch if provided.
@@ -892,7 +892,13 @@ async def export_inventory(
     if not client:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
+    from middleware.auth import verify_branch_in_org
+    if branch_id and branch_id not in ("undefined", "", "null"):
+        if not await verify_branch_in_org(branch_id, str(org_id)):
+            raise HTTPException(status_code=404, detail="Branch not found")
+        effective_branch = branch_id
+    else:
+        effective_branch = current_user.get("branch_id")
 
     # Fetch all items (scoped to branch if provided)
     _iq = client.table("items").select("*") \

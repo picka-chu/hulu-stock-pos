@@ -78,6 +78,10 @@ async def get_bank_account(account_id: UUID, current_user: dict = Depends(get_cu
 async def create_bank_account(account_data: BankAccountCreate, current_user: dict = Depends(require_manager)):
     # Default branch_id to user's branch if not specified
     branch_id = str(account_data.branch_id) if account_data.branch_id else current_user.get("branch_id")
+    if branch_id:
+        from middleware.auth import verify_branch_in_org
+        if not await verify_branch_in_org(str(branch_id), str(current_user["organization_id"])):
+            raise HTTPException(status_code=404, detail="Branch not found")
     acct_type = (account_data.account_type or "bank").strip().lower()
     if acct_type not in ("bank", "mobile_money"):
         acct_type = "bank"
@@ -129,6 +133,10 @@ async def delete_bank_account(account_id: UUID, current_user: dict = Depends(req
 @router.post("/transfer", response_model=CashTransferResponse, status_code=status.HTTP_201_CREATED)
 async def create_cash_transfer(transfer_data: CashTransferCreate, current_user: dict = Depends(require_manager)):
     branch_id = str(transfer_data.branch_id) if transfer_data.branch_id else current_user.get("branch_id")
+    if branch_id:
+        from middleware.auth import verify_branch_in_org as _verify_branch
+        if not await _verify_branch(str(branch_id), str(current_user["organization_id"])):
+            raise HTTPException(status_code=404, detail="Branch not found")
     ref = f"TRF-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     result = await insert_one("cash_transfers", {
         "id":               str(uuid4()),
@@ -143,18 +151,19 @@ async def create_cash_transfer(transfer_data: CashTransferCreate, current_user: 
         "notes":            transfer_data.notes,
     })
     if transfer_data.bank_account_id:
-        account = await fetch_one("bank_accounts", {"id": str(transfer_data.bank_account_id)})
-        if account:
-            current_bal = float(account.get("balance", 0))
-            if transfer_data.type.value == "cash_to_bank":
-                new_bal = current_bal + float(transfer_data.amount)
-            elif transfer_data.type.value == "bank_to_cash":
-                new_bal = current_bal - float(transfer_data.amount)
-                if new_bal < 0:
-                    raise HTTPException(status_code=400, detail="Insufficient bank balance for this withdrawal")
-            else:
-                new_bal = current_bal  # other transfer types don't change bank balance
-            await update_one("bank_accounts", {"balance": new_bal}, {"id": str(transfer_data.bank_account_id)})
+        account = await fetch_one("bank_accounts", {"id": str(transfer_data.bank_account_id), "organization_id": str(current_user["organization_id"])})
+        if not account:
+            raise HTTPException(status_code=404, detail="Bank account not found")
+        current_bal = float(account.get("balance", 0))
+        if transfer_data.type.value == "cash_to_bank":
+            new_bal = current_bal + float(transfer_data.amount)
+        elif transfer_data.type.value == "bank_to_cash":
+            new_bal = current_bal - float(transfer_data.amount)
+            if new_bal < 0:
+                raise HTTPException(status_code=400, detail="Insufficient bank balance for this withdrawal")
+        else:
+            new_bal = current_bal  # other transfer types don't change bank balance
+        await update_one("bank_accounts", {"balance": new_bal}, {"id": str(transfer_data.bank_account_id), "organization_id": str(current_user["organization_id"])})
     return result
 
 

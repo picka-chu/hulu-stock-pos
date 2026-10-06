@@ -8,7 +8,7 @@ from typing import List, Optional
 import asyncio
 
 from models import UserCreate, UserUpdate, UserResponse
-from middleware.auth import get_current_user, require_manager, get_password_hash, verify_password
+from middleware.auth import get_current_user, require_manager, get_password_hash, verify_password, verify_branch_in_org
 from database import fetch_one, insert_one, update_one, delete_one, get_supabase_client
 
 router = APIRouter()
@@ -35,9 +35,16 @@ async def get_users(
     if role:
         q = q.eq("role", role)
 
-    # Branch isolation: use explicit param or fall back to user's JWT branch
+    # Branch isolation: cashier locked to own branch; manager/admin param must belong to org
     viewer_role = current_user.get("role", "cashier")
-    effective_branch = str(branch_id) if branch_id else current_user.get("branch_id")
+    if viewer_role == "cashier":
+        effective_branch = current_user.get("branch_id")
+    elif branch_id:
+        if not await verify_branch_in_org(str(branch_id), str(org_id)):
+            raise HTTPException(status_code=404, detail="Branch not found")
+        effective_branch = str(branch_id)
+    else:
+        effective_branch = current_user.get("branch_id")
     if effective_branch:
         q = q.eq("branch_id", str(effective_branch))
     # admin with no branch = sees all users across org
@@ -73,9 +80,15 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
     role_value = str(user_data.role).lower().strip()
     if role_value not in ("admin", "manager", "cashier"):
         raise HTTPException(status_code=422, detail=f"Invalid role '{role_value}'")
+    # H5: manager cannot create admin
+    if current_user.get("role") == "manager" and role_value == "admin":
+        raise HTTPException(status_code=403, detail="Managers cannot create admin users")
 
     if await fetch_one("users", {"email": user_data.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    if user_data.branch_id and not await verify_branch_in_org(str(user_data.branch_id), str(current_user["organization_id"])):
+        raise HTTPException(status_code=404, detail="Branch not found")
 
     user_id = str(uuid4())
     result = await insert_one("users", {
@@ -104,9 +117,18 @@ async def update_user(user_id: UUID, user_data: UserUpdate, current_user: dict =
     updates = {}
     if user_data.full_name is not None: updates["full_name"] = user_data.full_name
     if user_data.phone     is not None: updates["phone"]     = user_data.phone
-    if user_data.role      is not None: updates["role"]      = user_data.role.value
+    if user_data.role      is not None:
+        new_role = str(user_data.role.value if hasattr(user_data.role, "value") else user_data.role).lower()
+        if new_role not in ("admin", "manager", "cashier"):
+            raise HTTPException(status_code=422, detail="Invalid role")
+        if current_user.get("role") == "manager" and new_role == "admin":
+            raise HTTPException(status_code=403, detail="Managers cannot promote to admin")
+        updates["role"] = new_role
     if user_data.is_active is not None: updates["is_active"] = user_data.is_active
-    if user_data.branch_id is not None: updates["branch_id"] = str(user_data.branch_id) if user_data.branch_id else None
+    if user_data.branch_id is not None:
+        if user_data.branch_id and not await verify_branch_in_org(str(user_data.branch_id), str(current_user["organization_id"])):
+            raise HTTPException(status_code=404, detail="Branch not found")
+        updates["branch_id"] = str(user_data.branch_id) if user_data.branch_id else None
 
     # Email change: check for duplicates before applying
     if user_data.email is not None and user_data.email != existing.get("email"):
@@ -130,6 +152,9 @@ async def change_password(
     body: dict,
     current_user: dict = Depends(get_current_user)
 ):
+    # M1: self-service or manager+ only; cashier cannot reset others
+    if str(user_id) != str(current_user["id"]) and current_user.get("role") not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Cannot change another user's password")
     old_password = body.get("old_password", "")
     new_password = body.get("new_password", "")
 
@@ -142,7 +167,7 @@ async def change_password(
     if not verify_password(old_password, user["password_hash"]):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    await update_one("users", {"password_hash": get_password_hash(new_password)}, {"id": str(user_id)})
+    await update_one("users", {"password_hash": get_password_hash(new_password)}, {"id": str(user_id), "organization_id": current_user["organization_id"]})
     return {"message": "Password changed successfully"}
 
 

@@ -95,10 +95,10 @@ async def create_branch(
         from uuid import uuid4
         branch_id = str(uuid4())
         
-        # Build branch data
+        # Build branch data — org always comes from JWT, never client
         branch_dict = {
             "id": branch_id,
-            "organization_id": str(branch_data.organization_id),
+            "organization_id": str(current_user["organization_id"]),
             "name": branch_data.name,
             "location": branch_data.location,
             "phone": branch_data.phone,

@@ -422,7 +422,7 @@ async def create_sale(
         raise HTTPException(status_code=500, detail="Failed to create sale — all changes rolled back")
 
     # Fetch final sale
-    return_sale = await fetch_one("sales", {"id": sale_id})
+    return_sale = await fetch_one("sales", {"id": sale_id, "organization_id": str(current_user["organization_id"])})
     sale_items = await _get_sale_items_with_names(client, sale_id)
     payments = await _get_payments(client, sale_id)
 

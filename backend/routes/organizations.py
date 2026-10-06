@@ -142,7 +142,9 @@ async def update_organization(
     org_data: OrganizationUpdate,
     current_user: dict = Depends(require_admin)
 ):
-    """Update organization"""
+    """Update organization — admin can only update their own org"""
+    if str(org_id) != str(current_user["organization_id"]):
+        raise HTTPException(status_code=403, detail="Cannot update another organization")
     # Update using proper update method
     update_data = {}
     

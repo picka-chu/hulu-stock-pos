@@ -111,6 +111,11 @@ async def create_category(
     try:
         from uuid import uuid4
         category_id = str(uuid4())
+
+        if category_data.branch_id:
+            from middleware.auth import verify_branch_in_org
+            if not await verify_branch_in_org(str(category_data.branch_id), str(current_user["organization_id"])):
+                raise HTTPException(status_code=404, detail="Branch not found")
         
         # Build category data - use organization_id from authenticated user for security
         category_dict = {

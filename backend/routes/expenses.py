@@ -63,10 +63,15 @@ async def get_expense(expense_id: UUID, current_user: dict = Depends(get_current
 async def create_expense(expense_data: ExpenseCreate, current_user: dict = Depends(require_manager)):
     from datetime import date as _date
     expense_date = str(expense_data.expense_date) if expense_data.expense_date else str(_date.today())
+    resolved_branch = str(expense_data.branch_id) if expense_data.branch_id else (str(current_user.get("branch_id")) if current_user.get("branch_id") else None)
+    if resolved_branch:
+        from middleware.auth import verify_branch_in_org
+        if not await verify_branch_in_org(resolved_branch, str(current_user["organization_id"])):
+            raise HTTPException(status_code=404, detail="Branch not found")
     result = await insert_one("expenses", {
         "id":              str(uuid4()),
         "organization_id": str(current_user["organization_id"]),
-        "branch_id":       str(expense_data.branch_id) if expense_data.branch_id else (str(current_user.get("branch_id")) if current_user.get("branch_id") else None),
+        "branch_id":       resolved_branch,
         "title":           expense_data.title,
         "description":     expense_data.description,
         "amount":          float(expense_data.amount),

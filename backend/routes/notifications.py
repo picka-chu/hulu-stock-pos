@@ -223,7 +223,7 @@ async def mark_as_read(
             pass
     # Also update is_read for targeted notifications (only affects this user)
     if notification.get("user_id"):
-        await update_one("notifications", {"is_read": True}, {"id": str(notification_id)})
+        await update_one("notifications", {"is_read": True}, {"id": str(notification_id), "organization_id": org_id})
     return {"success": True, "message": "Notification marked as read"}
 
 
@@ -299,7 +299,7 @@ async def delete_notification(
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
 
-    await delete_one("notifications", {"id": str(notification_id)})
+    await delete_one("notifications", {"id": str(notification_id), "organization_id": org_id})
     return {"success": True, "message": "Notification deleted"}
 
 

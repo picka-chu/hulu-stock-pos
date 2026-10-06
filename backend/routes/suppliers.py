@@ -87,6 +87,10 @@ async def create_supplier(supplier_data: SupplierCreate, current_user: dict = De
     resolved_branch = (str(supplier_data.branch_id)
                        if supplier_data.branch_id
                        else current_user.get("branch_id") or None)
+    if resolved_branch:
+        from middleware.auth import verify_branch_in_org
+        if not await verify_branch_in_org(resolved_branch, str(current_user["organization_id"])):
+            raise HTTPException(status_code=404, detail="Branch not found")
     result = await insert_one("suppliers", {
         "id":              str(uuid4()),
         "organization_id": str(current_user["organization_id"]),

@@ -168,3 +168,34 @@ def require_roles(allowed_roles: List[str]):
 require_admin   = require_roles(["admin"])
 require_manager = require_roles(["admin", "manager"])
 require_cashier = require_roles(["admin", "manager", "cashier"])
+
+# ── Branch guards (H4) ──────────────────────────────────────────────────────────
+async def verify_branch_in_org(branch_id: Optional[str], organization_id: str) -> bool:
+    """Return True iff branch exists in org. None/empty = no specific branch, allowed."""
+    if not branch_id or str(branch_id) in ("", "undefined", "null", "None"):
+        return True
+    branch = await fetch_one("branches", {"id": str(branch_id), "organization_id": str(organization_id)})
+    return branch is not None
+
+async def resolve_branch_access(
+    current_user: dict,
+    requested_branch_id: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Resolve effective branch + enforce access:
+    - cashier: locked to JWT branch (requested ignored)
+    - manager/admin: requested must belong to org (404 otherwise)
+    Returns effective branch id or None (all branches).
+    """
+    role = current_user.get("role", "cashier")
+    user_branch = current_user.get("branch_id")
+    org_id = str(current_user.get("organization_id") or "")
+
+    if role == "cashier":
+        return user_branch
+
+    if requested_branch_id and str(requested_branch_id) not in ("", "undefined", "null", "None"):
+        if not await verify_branch_in_org(requested_branch_id, org_id):
+            raise HTTPException(status_code=404, detail="Branch not found")
+        return str(requested_branch_id)
+    return user_branch

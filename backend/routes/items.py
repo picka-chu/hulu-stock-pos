@@ -890,7 +890,7 @@ async def upload_item_image(
     result = await update_one(
         "items",
         {"image_url": image_url},
-        {"id": str(item_id)}
+        {"id": str(item_id), "organization_id": str(current_user["organization_id"])}
     )
     
     logger.info(f"[Item] Image uploaded successfully for item {item_id}")
@@ -1139,7 +1139,7 @@ async def update_stock(
         # Positive stock changes write a receipt batch above, then update the
         # item projection and attach the movement to the created batch.
         update_data = {"stock_quantity": new_quantity}
-        result = await update_one("items", update_data, {"id": str(item_id)})
+        result = await update_one("items", update_data, {"id": str(item_id), "organization_id": str(current_user["organization_id"])})
         movement_dict = {
             "id": str(uuid4()),
             "item_id": str(item_id),
@@ -1250,8 +1250,8 @@ async def bulk_stock_adjust(
 
             if not movement_written:
                 await asyncio.to_thread(
-                    lambda iid=item_id, nq=new_qty: client.table("items")
-                        .update({"stock_quantity": nq}).eq("id", iid).execute()
+                    lambda iid=item_id, nq=new_qty, oid=str(org_id): client.table("items")
+                        .update({"stock_quantity": nq}).eq("id", iid).eq("organization_id", oid).execute()
                 )
                 await insert_one("stock_movements", {
                     "id": str(__import__("uuid").uuid4()),
