@@ -25,24 +25,17 @@ from middleware.auth import create_access_token, decode_token, get_password_hash
 router = APIRouter()
 security = HTTPBearer()
 
-# ── Credentials from environment ──────────────────────────────────────────────
-_SA_EMAIL    = os.getenv("SUPERADMIN_EMAIL",    "bereket@onyx.com").strip()
+# ── Credentials from environment (no defaults — fail closed) ───────────────────
+_SA_EMAIL    = os.getenv("SUPERADMIN_EMAIL", "").strip()
 _SA_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "").strip()
 _SA_ENV      = os.getenv("ENVIRONMENT", "production")
 
 import logging as _salog
-if not _SA_PASSWORD or _SA_PASSWORD in ("050508", "admin", "password", "superadmin", ""):
-    if not _SA_PASSWORD:
-        _SA_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "")
-    warning_msg = (
-        "SUPERADMIN_PASSWORD is not set or uses a weak default. "
-        "Set a strong SUPERADMIN_PASSWORD env var in production."
+if not _SA_EMAIL or not _SA_PASSWORD:
+    _salog.getLogger("superadmin").error(
+        "CRITICAL: SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD are not set. "
+        "Superadmin login is disabled until they are configured."
     )
-    _salog.getLogger("superadmin").warning(warning_msg)
-    if _SA_ENV == "production":
-        _salog.getLogger("superadmin").error("CRITICAL: %s", warning_msg)
-    if not _SA_PASSWORD:
-        _SA_PASSWORD = "050508"
 
 _SA_ROLE = "superadmin"
 
@@ -99,6 +92,12 @@ async def require_superadmin(
 async def superadmin_login(body: dict):
     email    = body.get("email", "").strip().lower()
     password = body.get("password", "")
+
+    if not _SA_EMAIL or not _SA_PASSWORD:
+        raise HTTPException(
+            status_code=503,
+            detail="Superadmin login is not configured. Set SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD on the backend."
+        )
 
     if email != _SA_EMAIL.lower() or password != _SA_PASSWORD:
         from database import log_audit

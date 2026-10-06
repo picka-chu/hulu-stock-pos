@@ -19,6 +19,8 @@ class PaymentStatus(str, Enum):
     PAID = "paid"
     PARTIAL = "partial"
     REFUNDED = "refunded"
+    RETURNED = "returned"
+    PARTIAL_RETURN = "partial_return"
 
 class PaymentMethod(str, Enum):
     CASH = "cash"
@@ -120,10 +122,11 @@ class UserBase(BaseModel):
     email: EmailStr
 
 class UserCreate(UserBase):
-    # organization_id is derived from the authenticated user for security
+    organization_id: UUID
     branch_id: Optional[UUID] = None
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
     role: str = "cashier"  # Accept as string, validate in route
+    invite_token: Optional[str] = None
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)

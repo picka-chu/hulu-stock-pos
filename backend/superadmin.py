@@ -16,15 +16,15 @@ from middleware.auth import create_access_token, decode_token, get_password_hash
 router = APIRouter()
 security = HTTPBearer()
 
-# ── Credentials from environment ──────────────────────────────────────────────
-_SA_EMAIL    = os.getenv("SUPERADMIN_EMAIL",    "bereket@onyx.com")
-_SA_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "050508")
+# ── Credentials from environment (no defaults — fail closed) ───────────────────
+_SA_EMAIL    = os.getenv("SUPERADMIN_EMAIL", "")
+_SA_PASSWORD = os.getenv("SUPERADMIN_PASSWORD", "")
 
 import logging as _salog
-if _SA_PASSWORD == "050508":
-    _salog.getLogger("superadmin").warning(
-        "SUPERADMIN_PASSWORD is using the default '050508'. "
-        "Set SUPERADMIN_PASSWORD env var to change it."
+if not _SA_EMAIL or not _SA_PASSWORD:
+    _salog.getLogger("superadmin").error(
+        "CRITICAL: SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD are not set. "
+        "Superadmin login is disabled until they are configured."
     )
 
 _SA_ROLE = "superadmin"
@@ -47,6 +47,9 @@ async def require_superadmin(
 async def superadmin_login(body: dict):
     email    = body.get("email", "").strip().lower()
     password = body.get("password", "")
+
+    if not _SA_EMAIL or not _SA_PASSWORD:
+        raise HTTPException(status_code=503, detail="Superadmin login is not configured.")
 
     if email != _SA_EMAIL.lower() or password != _SA_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid credentials")

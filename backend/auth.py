@@ -79,7 +79,9 @@ async def register(user_data: UserCreate):
     import os as _os
     reg_secret = _os.getenv("REGISTRATION_SECRET", "")
     invite_token = getattr(user_data, "invite_token", "") or ""
-    if reg_secret and invite_token != reg_secret:
+    if not reg_secret:
+        raise HTTPException(status_code=403, detail="Registration is disabled. Contact your administrator.")
+    if invite_token != reg_secret:
         raise HTTPException(
             status_code=403,
             detail="Registration requires a valid invite token. Contact your administrator."
@@ -105,6 +107,9 @@ async def register(user_data: UserCreate):
             raise HTTPException(status_code=404, detail="Branch not found")
 
     user_id = str(uuid4())
+    role_value = getattr(user_data.role, "value", user_data.role)
+    if str(role_value).lower() not in ("admin", "manager", "cashier"):
+        raise HTTPException(status_code=400, detail="Invalid role")
     await insert_one("users", {
         "id":              user_id,
         "organization_id": str(user_data.organization_id),
@@ -113,7 +118,7 @@ async def register(user_data: UserCreate):
         "phone":           user_data.phone,
         "email":           user_data.email,
         "password_hash":   get_password_hash(user_data.password),
-        "role":            user_data.role.value,
+        "role":            str(role_value).lower(),
         "is_active":       True,
     })
 

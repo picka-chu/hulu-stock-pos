@@ -218,13 +218,13 @@ CREATE TABLE sales (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     invoice_number VARCHAR(50) NOT NULL,
     total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     tax_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     discount_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     net_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    payment_status VARCHAR(20) DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'partial', 'refunded')),
+    payment_status VARCHAR(20) DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'partial', 'refunded', 'returned', 'partial_return')),
     payment_method VARCHAR(50),
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -291,7 +291,7 @@ CREATE TABLE expenses (
     amount DECIMAL(12,2) NOT NULL,
     expense_type VARCHAR(50) NOT NULL,
     expense_date DATE NOT NULL,
-    created_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     receipt_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -360,7 +360,7 @@ CREATE TABLE shifts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     start_time TIMESTAMP WITH TIME ZONE NOT NULL,
     end_time TIMESTAMP WITH TIME ZONE,
     start_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
@@ -547,20 +547,15 @@ ALTER TABLE cash_transfers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 
--- Organizations: Public read for tenant info, admin write
-CREATE POLICY "orgs_select" ON organizations FOR SELECT USING (true);
-CREATE POLICY "orgs_insert" ON organizations FOR INSERT WITH CHECK (true);
-CREATE POLICY "orgs_update" ON organizations FOR UPDATE USING (true);
-CREATE POLICY "orgs_delete" ON organizations FOR DELETE USING (true);
+-- Organizations: service role only (backend uses service key which bypasses RLS;
+-- direct anon-key access is denied). See migration_011_tighten_rls.sql.
+CREATE POLICY "orgs_service_only" ON organizations FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
--- Branches: Filter by organization
-CREATE POLICY "branches_select" ON branches FOR SELECT USING (organization_id = (SELECT organization_id FROM users WHERE id::text = current_setting('app.current_user_id', true)::text));
-CREATE POLICY "branches_insert" ON branches FOR INSERT WITH CHECK (true);
-CREATE POLICY "branches_update" ON branches FOR UPDATE USING (true);
-CREATE POLICY "branches_delete" ON branches FOR DELETE USING (true);
+-- Branches: service role only
+CREATE POLICY "branches_service_only" ON branches FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
--- Note: For full RLS implementation, you'd need to set app.current_user_id
--- This is a simplified version. In production, use Supabase Auth and JWT claims.
+-- Note: Backend uses the Supabase service key which bypasses RLS.
+-- These policies deny direct PostgREST access with the anon key.
 
 -- =====================================================
 -- STORAGE BUCKET FOR IMAGES
@@ -593,6 +588,6 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at
 -- Enable RLS
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
--- Allow the service role (backend) full access
+-- Allow the service role (backend) full access; deny anon key
 CREATE POLICY "notifications_service_all" ON notifications
-    USING (true) WITH CHECK (true);
+    FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
