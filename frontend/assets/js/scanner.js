@@ -320,6 +320,16 @@ window.XScanner = (() => {
             if (e.target === _overlayEl) api.close();
         });
 
+        // Camera hot-plug: if camera was not found, auto-retry when one becomes available
+        const deviceHandler = () => {
+            if (!_active || _stream) return;
+            navigator.mediaDevices.enumerateDevices().then(devices => {
+                if (devices.some(d => d.kind === 'videoinput')) _startCamera();
+            }).catch(() => {});
+        };
+        navigator.mediaDevices.addEventListener('devicechange', deviceHandler);
+        _overlayEl._deviceHandler = deviceHandler;
+
         // Tap-to-focus
         _videoEl.addEventListener('click', async e => {
             if (!_stream) return;
@@ -345,7 +355,13 @@ window.XScanner = (() => {
     }
 
     function _removeOverlay() {
-        if (_overlayEl) { _overlayEl.remove(); _overlayEl = null; }
+        if (_overlayEl) {
+            if (_overlayEl._deviceHandler) {
+                navigator.mediaDevices.removeEventListener('devicechange', _overlayEl._deviceHandler);
+            }
+            _overlayEl.remove();
+            _overlayEl = null;
+        }
     }
 
     function _setStatus(msg, cls = '') {
@@ -539,25 +555,46 @@ window.XScanner = (() => {
     }
 
     function _handleCameraError(err) {
-        let msg;
+        let msg, canRetry = true;
         if (err.name === 'NotAllowedError') {
             msg = 'Camera permission denied. Allow camera in browser settings and try again.';
+            canRetry = false;
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-            msg = 'No camera found. Use a USB/Bluetooth barcode scanner instead.';
+            msg = 'No camera found. Connect a camera or use a USB/Bluetooth barcode scanner.';
         } else if (err.name === 'NotReadableError') {
             msg = 'Camera is in use by another app. Close it and retry.';
+        } else if (err.name === 'OverconstrainedError') {
+            msg = 'Camera not compatible — try a different camera via switch button.';
         } else {
             msg = `Camera error: ${err.message || err.name}`;
         }
         _setStatus(msg, 'error');
         _onError(msg);
+
+        // Add retry + manual entry buttons
         const statusEl = document.getElementById('xpos-status');
         if (statusEl) {
-            const retry = document.createElement('button');
-            retry.textContent = 'Retry';
-            retry.style.cssText = 'display:block;margin:10px auto 0;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:13px;cursor:pointer;';
-            retry.onclick = () => { retry.remove(); _startCamera(); };
-            statusEl.after(retry);
+            const btnWrap = document.createElement('div');
+            btnWrap.style.cssText = 'display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap;';
+            if (canRetry) {
+                const retry = document.createElement('button');
+                retry.textContent = 'Retry Camera';
+                retry.style.cssText = 'background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:13px;cursor:pointer;font-weight:600;';
+                retry.onclick = () => { btnWrap.remove(); _startCamera(); };
+                btnWrap.appendChild(retry);
+            }
+            const manualBtn = document.createElement('button');
+            manualBtn.textContent = 'Enter Barcode Manually';
+            manualBtn.style.cssText = 'background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:8px 20px;font-size:13px;cursor:pointer;font-weight:600;';
+            manualBtn.onclick = () => {
+                const code = prompt('Enter barcode:');
+                if (code && code.trim()) {
+                    _handleResult(code.trim(), 'MANUAL');
+                    api.close();
+                }
+            };
+            btnWrap.appendChild(manualBtn);
+            statusEl.after(btnWrap);
         }
     }
 
@@ -771,35 +808,62 @@ window.XScanner = (() => {
     }
 
     // Pre-process canvas for jsQR on iOS:
-    // Greyscale + auto-level + contrast stretch.
-    // jsQR already does its own binarisation internally, so we just need
-    // to give it clean high-contrast greyscale input.
+    // 1. Greyscale — barcodes are 1D, colour is noise
+    // 2. Auto-level: stretch the actual min→max range to 0→255 (handles dim rooms)
+    // 3. Contrast stretch (1.6×) centred on greyscale mid-point
+    // 4. Adaptive threshold binarisation — makes bars pure black on pure white
+    //    using integral image for fast local mean (15×15 window, offset -10)
+    // This dramatically improves detection on iOS in low-light conditions.
     function _preprocessForJsQR(canvas, ctx, w, h) {
-        const imageData = ctx.getImageData(0, 0, w, h);
-        const d = imageData.data;
+        try {
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const d = imageData.data;
+            const lum = new Uint8Array(w * h);
+            const n = w * h;
 
-        let minL = 255, maxL = 0;
-        const lum = new Uint8Array(w * h);
+            let minL = 255, maxL = 0;
+            for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+                const l = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
+                lum[p] = l;
+                if (l < minL) minL = l;
+                if (l > maxL) maxL = l;
+            }
 
-        // Greyscale pass + find range
-        for (let i = 0, p = 0; i < d.length; i += 4, p++) {
-            const l = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
-            lum[p] = l;
-            if (l < minL) minL = l;
-            if (l > maxL) maxL = l;
-        }
+            const range = maxL - minL || 1;
+            const f = 1.6;
+            for (let p = 0; p < n; p++) {
+                let v = ((lum[p] - minL) / range) * 255;
+                v = Math.min(255, Math.max(0, f * (v - 128) + 128));
+                lum[p] = v;
+            }
 
-        // Auto-level + contrast stretch (1.4×)
-        const range = maxL - minL || 1;
-        const factor = 1.4;
-        for (let p = 0; p < lum.length; p++) {
-            let v = ((lum[p] - minL) / range) * 255;
-            v = Math.min(255, Math.max(0, factor * (v - 128) + 128));
-            const i = p * 4;
-            d[i] = d[i+1] = d[i+2] = v;
-            d[i+3] = 255;
-        }
-        ctx.putImageData(imageData, 0, 0);
+            // Adaptive threshold (15×15 local window, offset -10)
+            const WIN = 15, HALF = WIN >> 1, OFFSET = 10;
+            const out = new Uint8Array(n);
+            const integ = new Int32Array((w + 1) * (h + 1));
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    integ[(y+1)*(w+1)+(x+1)] = lum[y*w+x] + integ[y*(w+1)+(x+1)] + integ[(y+1)*(w+1)+x] - integ[y*(w+1)+x];
+                }
+            }
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const x1 = Math.max(0, x - HALF), y1 = Math.max(0, y - HALF);
+                    const x2 = Math.min(w, x + HALF), y2 = Math.min(h, y + HALF);
+                    const count = (x2 - x1) * (y2 - y1);
+                    const sum = integ[y2*(w+1)+x2] - integ[y1*(w+1)+x2] - integ[y2*(w+1)+x1] + integ[y1*(w+1)+x1];
+                    const mean = sum / count;
+                    out[y*w+x] = lum[y*w+x] < mean - OFFSET ? 0 : 255;
+                }
+            }
+
+            for (let p = 0; p < n; p++) {
+                const v = out[p];
+                d[p*4] = d[p*4+1] = d[p*4+2] = v;
+                d[p*4+3] = 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        } catch (_) {}
     }
 
     // enhance=true: apply full adaptive threshold — helps noisy laptop webcams
@@ -967,7 +1031,6 @@ window.XScanner = (() => {
 
     function _initHardwareScanner() {
         document.addEventListener('keydown', e => {
-            if (_active) return;
             const tag       = document.activeElement?.tagName;
             const isInput   = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
             const isHWInput = document.activeElement?.classList?.contains('xpos-barcode-hw');
@@ -979,7 +1042,16 @@ window.XScanner = (() => {
                     clearTimeout(_hwTimer);
                     if (!isInput || isHWInput) {
                         e.preventDefault();
-                        _triggerBarcode(code);
+                        if (_active && _onResult) {
+                            _flashGreen();
+                            _setStatus(`✓ ${code}`, 'success');
+                            if (navigator.vibrate) navigator.vibrate([50, 20, 50]);
+                            _beep();
+                            setTimeout(() => { if (_active) _setStatus('Scanning…'); }, 1500);
+                            _onResult(code, 'SCANNER');
+                        } else {
+                            _triggerBarcode(code);
+                        }
                     }
                 }
                 return;
