@@ -5,8 +5,8 @@
  *   1. Click "Quick Update" or press F5
  *   2. Type/scan barcode OR type item name → live results appear
  *   3. Click result OR press Enter to load item
- *   4. Edit stock, prices, expiry
- *   5. "Update & Next" → ready for next scan
+ *   4. Edit stock, prices, expiry, batch
+ *   5. "Update & Next" saves and resets for the next scan
  */
 window.QuickUpdate = (() => {
 
@@ -14,25 +14,83 @@ window.QuickUpdate = (() => {
 
     const SESSION = {
         currentItem:  null,
+        baseStock:    0,
         hasChanges:   false,
-        searchTimer:  null,   // debounce timer for live search
+        searchTimer:  null,
     };
+
+    /* ════════════════════════════════════════════════════════════════════════
+     *  HELPERS
+     * ════════════════════════════════════════════════════════════════════════ */
+
+    function _esc(str) {
+        return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _setText(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    }
+
+    function _setVal(id, val) {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; }
+    }
+
+    function _getVal(id) {
+        const el = document.getElementById(id);
+        return el ? el.value : '';
+    }
 
     function _generateAutoBatchNumber() {
         const d = new Date();
         const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        return `LOTX${Date.now().toString().slice(-5)}-${day}-${month}-${d.getFullYear()}`;
+        const mon = String(d.getMonth() + 1).padStart(2, '0');
+        return `LOT${d.getFullYear()}${mon}${day}-${Date.now().toString().slice(-5)}`;
     }
 
     function _parseFlexibleDateInput(value) {
         const raw = String(value || '').trim();
         if (!raw) return null;
         const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-        if (iso) return `${iso[1]}-${iso[2].padStart(2,'0')}-${iso[3].padStart(2,'0')}`;
+        if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
         const m = raw.match(/^(\d{1,2})[-\/. ](\d{1,2})[-\/. ](\d{4})$/);
-        if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+        if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
         return raw;
+    }
+
+    function _playSound(type) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = type === 'success' ? 880 : 260;
+            gain.gain.value = 0.06;
+            osc.start();
+            osc.stop(ctx.currentTime + (type === 'success' ? 0.08 : 0.18));
+        } catch (_) {}
+    }
+
+    function _showToast(msg, type) {
+        if (typeof showToast === 'function') {
+            showToast(msg, type);
+        }
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+     *  PANEL SWITCHING
+     * ════════════════════════════════════════════════════════════════════════ */
+
+    function _showPanel(panel) {
+        ['quSearchPanel', 'quItemPanel', 'quLoading', 'quNotFound'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        const map = { search: 'quSearchPanel', item: 'quItemPanel', loading: 'quLoading', notfound: 'quNotFound' };
+        const target = document.getElementById(map[panel]);
+        if (target) target.style.display = '';
     }
 
     /* ════════════════════════════════════════════════════════════════════════
@@ -44,14 +102,10 @@ window.QuickUpdate = (() => {
         if (!modal) { console.error('[QuickUpdate] Modal not found'); return; }
 
         _resetSession();
-
-        // Show modal — set display directly to avoid inline-style vs CSS-class conflict
-        modal.style.display    = 'flex';
+        modal.style.display = 'flex';
         modal.style.alignItems = 'flex-start';
         modal.style.paddingTop = 'max(1rem, 5vh)';
         modal.classList.add('active');
-
-        // Hide item panel, clear search
         _showPanel('search');
 
         setTimeout(() => {
@@ -75,111 +129,104 @@ window.QuickUpdate = (() => {
 
     function _resetSession() {
         SESSION.currentItem = null;
-        SESSION.hasChanges  = false;
+        SESSION.baseStock = 0;
+        SESSION.hasChanges = false;
         clearTimeout(SESSION.searchTimer);
-        // Clear search results content
         const sr = document.getElementById('quSearchResults');
-        if (sr) { sr.innerHTML = ''; }
-        // Clear search input value
+        if (sr) sr.innerHTML = '';
         const si = document.getElementById('quSearchInput');
-        if (si) { si.value = ''; }
-        // Let _showPanel handle all visibility — don't hide individual elements here
+        if (si) si.value = '';
         _showPanel('search');
     }
 
     /* ════════════════════════════════════════════════════════════════════════
-     *  PANEL SWITCHING
-     * ════════════════════════════════════════════════════════════════════════ */
-
-    function _showPanel(panel) {
-        const searchPanel = document.getElementById('quSearchPanel');
-        const itemPanel   = document.getElementById('quItemPanel');
-        const loading     = document.getElementById('quLoading');
-        const notFound    = document.getElementById('quNotFound');
-
-        if (searchPanel) searchPanel.style.display = panel === 'search' ? '' : 'none';
-        if (itemPanel)   itemPanel.style.display   = panel === 'item'   ? '' : 'none';
-        if (loading)     loading.style.display     = panel === 'loading'? '' : 'none';
-        if (notFound)    notFound.style.display    = panel === 'notfound'? '' : 'none';
-    }
-
-    /* ════════════════════════════════════════════════════════════════════════
-     *  LIVE SEARCH  (debounced, 300ms)
+     *  LIVE SEARCH
      * ════════════════════════════════════════════════════════════════════════ */
 
     function onSearchInput(val) {
         clearTimeout(SESSION.searchTimer);
         const query = (val || '').trim();
-
         const resultsEl = document.getElementById('quSearchResults');
         if (!query) {
             if (resultsEl) resultsEl.innerHTML = '';
             return;
         }
-
-        // Debounce 300ms
-        SESSION.searchTimer = setTimeout(() => _runSearch(query), 300);
+        SESSION.searchTimer = setTimeout(() => _runSearch(query), 250);
     }
 
     async function _runSearch(query) {
         const resultsEl = document.getElementById('quSearchResults');
         if (!resultsEl) return;
 
-        resultsEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-3);font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Searching…</div>';
+        resultsEl.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text-3);font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Searching…</div>';
 
         try {
             const branchId = window.AppState?.branch?.id || window.AppState?.currentUser?.branch_id || undefined;
-            const params   = { search: query, page_size: 10 };
+            const params = { search: query, page_size: 12 };
             if (branchId) params.branch_id = branchId;
 
             const items = await window.API.get('/items', params);
-            const list  = Array.isArray(items) ? items : (items?.items || []);
+            const list = Array.isArray(items) ? items : (items?.items || []);
 
             if (!list.length) {
-                resultsEl.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-3);font-size:12px;">
-                    <i class="fas fa-search" style="margin-right:6px;"></i>No items found for "<strong>${_esc(query)}</strong>"
-                </div>`;
+                resultsEl.innerHTML = `
+                    <div style="padding:20px;text-align:center;">
+                        <i class="fas fa-search" style="font-size:20px;color:var(--text-3);opacity:.4;display:block;margin-bottom:8px;"></i>
+                        <p style="font-size:13px;color:var(--text-2);">No items found for "<strong>${_esc(query)}</strong>"</p>
+                        <p style="font-size:11px;color:var(--text-3);margin-top:4px;">Try a different name or scan the barcode</p>
+                    </div>`;
                 return;
             }
 
-            resultsEl.innerHTML = list.map(it => `
-                <div class="qu-result-row" onclick="QuickUpdate._selectItem('${it.id}')"
-                     style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+            resultsEl.innerHTML = list.map(it => {
+                const stock = it.stock_quantity ?? 0;
+                const stockColor = stock <= 0 ? 'var(--danger)' : stock <= (it.min_stock_level || 10) ? 'var(--warning)' : 'var(--success)';
+                return `<div class="qu-result-row" onclick="QuickUpdate._selectItem('${it.id}')"
+                     style="display:flex;align-items:center;gap:12px;padding:12px 14px;
                             cursor:pointer;border-bottom:1px solid var(--border);
-                            transition:background .15s;"
-                     onmouseover="this.style.background='var(--surface-2,#f8fafc)'"
+                            transition:all .12s;"
+                     onmouseover="this.style.background='var(--primary-ultra)'"
                      onmouseout="this.style.background=''">
+                    <div style="width:36px;height:36px;border-radius:8px;background:var(--bg);
+                                display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">📦</div>
                     <div style="flex:1;min-width:0;">
                         <div style="font-size:13px;font-weight:600;color:var(--text-1);
                                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                             ${_esc(it.name || 'Unnamed')}
                         </div>
                         <div style="font-size:11px;color:var(--text-3);margin-top:2px;">
-                            ${it.barcode ? `<span style="font-family:monospace;">${_esc(it.barcode)}</span> · ` : ''}
-                            Stock: <strong>${it.stock_quantity ?? 0}</strong>
+                            ${it.barcode ? `<span style="font-family:monospace;background:var(--bg);padding:1px 6px;border-radius:4px;">${_esc(it.barcode)}</span> · ` : ''}
+                            ${it.category_name || ''}
                         </div>
                     </div>
-                    <div style="font-size:12px;font-weight:700;color:var(--primary);white-space:nowrap;">
-                        ${it.sell_price != null ? (window.AppState?.organization?.currency || '') + ' ' + Number(it.sell_price).toFixed(2) : ''}
+                    <div style="text-align:right;flex-shrink:0;">
+                        <div style="font-size:11px;color:var(--text-3);">Stock</div>
+                        <div style="font-size:18px;font-weight:800;color:${stockColor};line-height:1.2;">${stock}</div>
                     </div>
-                </div>
-            `).join('');
+                    <div style="font-size:13px;font-weight:600;color:var(--primary);white-space:nowrap;padding-left:4px;">
+                        ${it.sell_price != null ? _currency() + ' ' + Number(it.sell_price).toFixed(2) : ''}
+                    </div>
+                </div>`;
+            }).join('');
 
         } catch (err) {
-            resultsEl.innerHTML = `<div style="padding:12px;text-align:center;color:#ef4444;font-size:12px;">
-                Search failed: ${_esc(err?.message || 'Unknown error')}
+            resultsEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--danger);font-size:13px;">
+                <i class="fas fa-exclamation-triangle"></i> Search failed: ${_esc(err?.message || 'Unknown error')}
             </div>`;
         }
     }
 
+    function _currency() {
+        return window.AppState?.organization?.currency || '';
+    }
+
     /* ════════════════════════════════════════════════════════════════════════
-     *  BARCODE SUBMIT (Enter key or Scan button)
+     *  BARCODE SUBMIT
      * ════════════════════════════════════════════════════════════════════════ */
 
     function handleBarcodeInput(val) {
         const query = (val || '').trim();
         if (!query) return;
-        // If it looks like a barcode (no spaces, reasonable length), try exact barcode lookup first
         const looksLikeBarcode = /^[A-Za-z0-9\-]{3,50}$/.test(query) && !query.includes(' ');
         if (looksLikeBarcode) {
             _loadByBarcode(query);
@@ -195,23 +242,26 @@ window.QuickUpdate = (() => {
             if (!item || !item.id) throw new Error('Item not found');
             _loadItem(item);
         } catch (err) {
-            // Barcode not found — fall back to search
             _showPanel('search');
             const resultsEl = document.getElementById('quSearchResults');
             if (resultsEl) {
-                resultsEl.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-3);font-size:12px;">
-                    <i class="fas fa-barcode" style="margin-right:6px;"></i>
-                    Barcode <strong>${_esc(barcode)}</strong> not found — showing search results:
-                </div>`;
+                resultsEl.innerHTML = `
+                    <div style="padding:14px;display:flex;gap:10px;align-items:center;
+                                background:var(--warning-light,#fef3c7);border-bottom:1px solid var(--border);">
+                        <i class="fas fa-barcode" style="color:var(--warning);font-size:14px;"></i>
+                        <div style="font-size:12px;color:var(--text-1);">
+                            Barcode <strong style="font-family:monospace;">${_esc(barcode)}</strong> not found —
+                            showing items matching that code below
+                        </div>
+                    </div>`;
+                resultsEl.innerHTML += '<div style="padding:12px;text-align:center;color:var(--text-3);font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Searching…</div>';
             }
-            // Run a search so user can find by name
             await _runSearch(barcode);
-            showToast(`Barcode "${barcode}" not found — try searching by name`, 'warning');
         }
     }
 
     /* ════════════════════════════════════════════════════════════════════════
-     *  SELECT ITEM (by ID, from search results)
+     *  SELECT ITEM BY ID
      * ════════════════════════════════════════════════════════════════════════ */
 
     async function _selectItem(itemId) {
@@ -222,7 +272,7 @@ window.QuickUpdate = (() => {
             _loadItem(item);
         } catch (err) {
             _showPanel('notfound');
-            showToast(err?.message || 'Failed to load item', 'error');
+            _showToast(err?.message || 'Failed to load item', 'error');
         }
     }
 
@@ -232,26 +282,29 @@ window.QuickUpdate = (() => {
 
     function _loadItem(item) {
         SESSION.currentItem = item;
-        SESSION.hasChanges  = false;
+        SESSION.baseStock = item.stock_quantity ?? 0;
+        SESSION.hasChanges = false;
 
-        // Safely set each field
-        _setText('quItemName',      item.name || 'Unknown Item');
+        _setText('quItemName', item.name || 'Unknown Item');
         _setText('quBarcodeDisplay', item.barcode || 'No barcode');
-        _setText('quCurrentStock',  item.stock_quantity ?? 0);
-        _setText('quCategory',      item.category_name || '-');
-        _setText('quSupplier',      item.supplier_name || '-');
-        _setText('quBranch',        item.branch_name   || 'All Branches');
+        _setText('quCategory', item.category_name || '-');
+        _setText('quSupplier', item.supplier_name || '-');
+        _setText('quBranch', item.branch_name || 'All Branches');
 
-        _setVal('quBuyPrice',   item.buy_price   ?? 0);
-        _setVal('quSellPrice',  item.sell_price  ?? 0);
-        _setVal('quMinStock',   item.min_stock_level ?? 10);
+        _setText('quCurrentStock', SESSION.baseStock);
+        _updateStockColor(SESSION.baseStock);
+
+        _setVal('quBuyPrice', item.buy_price ?? '');
+        _setVal('quSellPrice', item.sell_price ?? '');
+        _setVal('quMinStock', item.min_stock_level ?? 10);
         _setVal('quStockAdjust', 0);
         _setVal('quExpiryDate', item.expiry_date || '');
         _setVal('quBatchNumber', item.batch_number || '');
 
+        _updateStockPreview();
+
         _showPanel('item');
 
-        // Focus stock adjust
         setTimeout(() => document.getElementById('quStockAdjust')?.focus(), 100);
         _playSound('success');
     }
@@ -265,19 +318,28 @@ window.QuickUpdate = (() => {
         if (!input) return;
         input.value = (parseInt(input.value) || 0) + Number(amount);
         SESSION.hasChanges = true;
-        _refreshStockPreview();
+        _updateStockPreview();
     }
 
-    function _refreshStockPreview() {
-        const base     = SESSION.currentItem?.stock_quantity ?? 0;
-        const adj      = parseInt(document.getElementById('quStockAdjust')?.value) || 0;
-        const newStock = base + adj;
-        // Show preview in currentStock label (we repurpose it as "new stock")
+    function _updateStockPreview() {
+        const adj = parseInt(document.getElementById('quStockAdjust')?.value) || 0;
+        const newStock = SESSION.baseStock + adj;
+
+        const valEl = document.getElementById('quNewStockVal');
+        if (valEl) {
+            valEl.textContent = newStock;
+            valEl.style.color = newStock <= 0 ? 'var(--danger)' :
+                newStock <= (SESSION.currentItem?.min_stock_level || 10) ? 'var(--warning)' : 'var(--text-1)';
+        }
+
+        _updateStockColor(newStock);
+    }
+
+    function _updateStockColor(val) {
         const el = document.getElementById('quCurrentStock');
         if (el) {
-            el.textContent = newStock;
-            el.style.color = newStock <= 0 ? '#ef4444' :
-                             newStock <= (SESSION.currentItem?.min_stock_level || 10) ? '#f59e0b' : '#10b981';
+            el.style.color = val <= 0 ? 'var(--danger)' :
+                val <= (SESSION.currentItem?.min_stock_level || 10) ? 'var(--warning)' : 'var(--success)';
         }
     }
 
@@ -286,57 +348,74 @@ window.QuickUpdate = (() => {
      * ════════════════════════════════════════════════════════════════════════ */
 
     async function saveAndNext() {
-        if (!SESSION.currentItem) { showToast('No item loaded', 'error'); return; }
+        if (!SESSION.currentItem) { _showToast('No item loaded', 'error'); return; }
 
         const saveBtn = document.getElementById('quSaveBtn');
         if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…'; }
 
         try {
-            const stockAdj   = parseInt(document.getElementById('quStockAdjust')?.value) || 0;
-            const buyPrice   = parseFloat(document.getElementById('quBuyPrice')?.value);
-            const sellPrice  = parseFloat(document.getElementById('quSellPrice')?.value);
-            const expiry     = _parseFlexibleDateInput(document.getElementById('quExpiryDate')?.value) || null;
-            const batchNo    = document.getElementById('quAutoBatch')?.checked ? _generateAutoBatchNumber() : (document.getElementById('quBatchNumber')?.value || null);
-            const minStock   = parseInt(document.getElementById('quMinStock')?.value) || 10;
-            const batchNumber = document.getElementById('quBatchNumber')?.value?.trim() || null;
+            const itemId = SESSION.currentItem.id;
+            const stockAdj = parseInt(document.getElementById('quStockAdjust')?.value) || 0;
+            const buyPrice = parseFloat(document.getElementById('quBuyPrice')?.value);
+            const sellPrice = parseFloat(document.getElementById('quSellPrice')?.value);
+            const expiry = _parseFlexibleDateInput(document.getElementById('quExpiryDate')?.value);
+            const minStock = parseInt(document.getElementById('quMinStock')?.value) || 10;
+            const autoBatch = document.getElementById('quAutoBatch')?.checked;
+            const manualBatch = document.getElementById('quBatchNumber')?.value?.trim() || null;
+            const batchNo = autoBatch ? _generateAutoBatchNumber() : manualBatch;
 
+            const updates = {};
+            let stockPromise = Promise.resolve();
+
+            // Stock adjustment
             if (stockAdj !== 0) {
-                await window.ItemsAPI.updateStock(
-                    SESSION.currentItem.id,
-                    Math.abs(stockAdj),
-                    stockAdj > 0 ? 'add' : 'subtract',
-                    stockAdj > 0 ? { batch_number: batchNo, expiry_date: expiry, unit_cost: isNaN(buyPrice) ? undefined : buyPrice } : {}
-                );
+                const absAdj = Math.abs(stockAdj);
+                const isAdd = stockAdj > 0;
+                const batchInfo = isAdd ? {
+                    ...(batchNo ? { batch_number: batchNo } : {}),
+                    ...(expiry ? { expiry_date: expiry } : {}),
+                    ...(!isNaN(buyPrice) ? { unit_cost: buyPrice } : {}),
+                } : {};
+                stockPromise = window.ItemsAPI.updateStock(itemId, absAdj, isAdd ? 'add' : 'subtract', batchInfo);
             }
 
-            await window.ItemsAPI.update(SESSION.currentItem.id, {
-                buy_price:       isNaN(buyPrice)  ? undefined : buyPrice,
-                sell_price:      isNaN(sellPrice) ? undefined : sellPrice,
-                expiry_date:     expiry,
-                batch_number:    batchNo,
-                min_stock_level: minStock,
-            });
+            // Price / min-stock / expiry updates
+            if (!isNaN(buyPrice)) updates.buy_price = buyPrice;
+            if (!isNaN(sellPrice)) updates.sell_price = sellPrice;
+            if (expiry) updates.expiry_date = expiry;
+            updates.min_stock_level = minStock;
+            if (batchNo) updates.batch_number = batchNo;
+
+            await stockPromise;
+
+            if (Object.keys(updates).length) {
+                await window.ItemsAPI.update(itemId, updates);
+            }
 
             _playSound('success');
-            showToast(`✅ ${SESSION.currentItem.name} updated`, 'success');
+            _showToast(`✅ ${SESSION.currentItem.name} updated`, 'success');
 
-            // Go back to search for next item
+            // Reset for next item
             SESSION.currentItem = null;
-            SESSION.hasChanges  = false;
+            SESSION.baseStock = 0;
+            SESSION.hasChanges = false;
             _showPanel('search');
             const inp = document.getElementById('quSearchInput');
             if (inp) { inp.value = ''; inp.focus(); }
             const sr = document.getElementById('quSearchResults');
             if (sr) sr.innerHTML = '';
 
+            // Refresh the items table in the background
+            if (typeof loadItems === 'function') loadItems();
+
         } catch (err) {
             console.error('[QuickUpdate] Save error:', err);
-            showToast(err?.message || 'Failed to update item', 'error');
+            _showToast(err?.message || 'Failed to update item', 'error');
             _playSound('error');
         } finally {
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fas fa-save"></i> Update & Next';
+                saveBtn.innerHTML = '<i class="fas fa-save"></i> Update &amp; Next';
             }
         }
     }
@@ -345,22 +424,6 @@ window.QuickUpdate = (() => {
         await saveAndNext();
         close();
         if (typeof loadItems === 'function') loadItems();
-    }
-
-    /* ════════════════════════════════════════════════════════════════════════
-     *  HELPERS
-     * ════════════════════════════════════════════════════════════════════════ */
-
-    function _setText(id, val) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val;
-    }
-    function _setVal(id, val) {
-        const el = document.getElementById(id);
-        if (el) el.value = val;
-    }
-    function _esc(str) {
-        return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     /* ════════════════════════════════════════════════════════════════════════
@@ -374,15 +437,14 @@ window.QuickUpdate = (() => {
         if (e.key === 'Escape') { e.preventDefault(); close(); return; }
 
         if (SESSION.currentItem) {
-            if (e.key === 'ArrowUp')   { e.preventDefault(); adjustStock(1);  return; }
+            if (e.key === 'ArrowUp') { e.preventDefault(); adjustStock(1); return; }
             if (e.key === 'ArrowDown') { e.preventDefault(); adjustStock(-1); return; }
             if (e.key === 'n' || e.key === 'N') {
                 const active = document.activeElement?.tagName;
-                if (!['INPUT','TEXTAREA'].includes(active)) { e.preventDefault(); saveAndNext(); }
+                if (!['INPUT', 'TEXTAREA'].includes(active)) { e.preventDefault(); saveAndNext(); }
             }
         }
 
-        // Enter on search input → submit
         if (e.key === 'Enter') {
             const focused = document.activeElement;
             if (focused?.id === 'quSearchInput') {
@@ -397,29 +459,25 @@ window.QuickUpdate = (() => {
      * ════════════════════════════════════════════════════════════════════════ */
 
     function openBarcodeScanner() {
-        if (!window.XScanner) { showToast('Scanner not available', 'error'); return; }
+        if (!window.XScanner) { _showToast('Scanner not available', 'error'); return; }
         window.XScanner.open({
             target: 'quick-update',
             onResult: (code) => { window.XScanner.close(); if (code) handleBarcodeInput(code); },
-            onError:  (msg)  => showToast('Scanner error: ' + msg, 'error'),
+            onError: (msg) => _showToast('Scanner error: ' + msg, 'error'),
         });
     }
 
     /* ════════════════════════════════════════════════════════════════════════
-     *  AUDIO
+     *  WIRE UP STOCK ADJUST INPUT TO PREVIEW
      * ════════════════════════════════════════════════════════════════════════ */
 
-    function _playSound(type) {
-        try {
-            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-            const osc  = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.frequency.value = type === 'success' ? 800 : 300;
-            gain.gain.value = 0.08;
-            osc.start(); osc.stop(ctx.currentTime + (type === 'success' ? 0.1 : 0.2));
-        } catch (_) {}
-    }
+    // Listen for stock adjust input changes to update preview
+    document.addEventListener('input', (e) => {
+        if (e.target.id === 'quStockAdjust') {
+            SESSION.hasChanges = true;
+            _updateStockPreview();
+        }
+    });
 
     /* ════════════════════════════════════════════════════════════════════════
      *  PUBLIC API
@@ -431,7 +489,6 @@ window.QuickUpdate = (() => {
         onSearchInput,
         _selectItem,
         _showPanel,
-        _refreshStockPreview,
         adjustStock,
         saveAndNext,
         saveAndClose,
