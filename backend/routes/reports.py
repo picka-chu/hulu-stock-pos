@@ -5,7 +5,7 @@ FIXED: Use Supabase client directly for all aggregate queries
 from fastapi import APIRouter, HTTPException, status, Depends
 from uuid import UUID
 from typing import Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from collections import defaultdict
 import asyncio
@@ -63,6 +63,13 @@ def _tier_base_unit_price(tiers: list, field: str) -> "float | None":
     return float(tier.get(field) or 0) / mult
 
 
+# ── Timezone + pagination helpers (shared with sales) ────────────────────────
+# Reports bucket sales by the ORGANIZATION's local day (Ethiopia runs
+# EAT/UTC+3, no DST) — slicing created_at[:10] puts late-night sales on the
+# wrong day. Date filters are converted to UTC bounds so the DB range matches.
+from routes.utils import _org_zone, _utc_window, _local_day, _local_month, _select_paged
+
+
 @router.get("/daily")
 async def get_daily_sales_report(
     start_date: date = None,
@@ -83,18 +90,21 @@ async def get_daily_sales_report(
         return []
 
     try:
-        q = client.table("sales").select(
-            "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
-        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
-            "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
-        ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
-
+        tz = await _org_zone(org_id)
+        lo, hi = _utc_window(start_date, end_date, tz)
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
-        if effective_branch:
-            q = q.eq("branch_id", str(effective_branch))
 
-        resp = await asyncio.to_thread(lambda: q.execute())
-        rows = resp.data or []
+        def _build(t):
+            qq = t.select(
+                "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
+            ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
+                "created_at", lo
+            ).lte("created_at", hi)
+            if effective_branch:
+                qq = qq.eq("branch_id", str(effective_branch))
+            return qq
+
+        rows = await _select_paged(client, "sales", _build)
 
         # Group by date
         daily = defaultdict(lambda: {
@@ -105,7 +115,7 @@ async def get_daily_sales_report(
             "gross_sales": 0.0
         })
         for row in rows:
-            day = (row.get("created_at") or "")[:10]
+            day = _local_day(row.get("created_at"), tz)
             if day:
                 daily[day]["total_transactions"] += 1
                 daily[day]["total_revenue"] += float(row.get("net_amount", 0))
@@ -146,17 +156,21 @@ async def get_monthly_sales_report(
         return []
 
     try:
-        q = client.table("sales").select(
-            "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
-        ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
-            "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
-        )
+        tz = await _org_zone(org_id)
+        lo, _hi = _utc_window(start_date, end_date, tz)
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
-        if effective_branch:
-            q = q.eq("branch_id", str(effective_branch))
 
-        resp = await asyncio.to_thread(lambda: q.execute())
-        rows = resp.data or []
+        def _build(t):
+            qq = t.select(
+                "id, net_amount, tax_amount, discount_amount, total_amount, created_at"
+            ).eq("organization_id", org_id).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
+                "created_at", lo
+            )
+            if effective_branch:
+                qq = qq.eq("branch_id", str(effective_branch))
+            return qq
+
+        rows = await _select_paged(client, "sales", _build)
 
         monthly = defaultdict(lambda: {
             "total_transactions": 0,
@@ -166,7 +180,7 @@ async def get_monthly_sales_report(
             "gross_sales": 0.0
         })
         for row in rows:
-            created = (row.get("created_at") or "")[:7]  # YYYY-MM
+            created = _local_month(row.get("created_at"), tz)  # YYYY-MM, local
             if created:
                 monthly[created]["total_transactions"] += 1
                 monthly[created]["total_revenue"] += float(row.get("net_amount", 0))
@@ -212,16 +226,22 @@ async def get_sales_by_item(
 
     try:
         # Get sales IDs for the period, scoped to branch if provided
+        tz = await _org_zone(org_id)
+        lo, hi = _utc_window(start_date, end_date, tz)
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
-        q = client.table("sales").select("id").eq(
-            "organization_id", org_id
-        ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
-            "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
-        ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
-        if effective_branch:
-            q = q.eq("branch_id", str(effective_branch))
-        resp = await asyncio.to_thread(lambda: q.execute())
-        sale_ids = [r["id"] for r in (resp.data or [])]
+
+        def _build(t):
+            qq = t.select("id").eq(
+                "organization_id", org_id
+            ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
+                "created_at", lo
+            ).lte("created_at", hi)
+            if effective_branch:
+                qq = qq.eq("branch_id", str(effective_branch))
+            return qq
+
+        sales_rows = await _select_paged(client, "sales", _build, order_field="id")
+        sale_ids = [r["id"] for r in sales_rows]
 
         if not sale_ids:
             return []
@@ -238,11 +258,13 @@ async def get_sales_by_item(
         chunk_size = 100
         for i in range(0, len(sale_ids), chunk_size):
             chunk = sale_ids[i:i + chunk_size]
-            qi = client.table("sale_items").select(
-                "item_id, quantity, base_quantity, unit_id, total, cost_price, batch_id, batch_number, batch_expiry_date"
-            ).in_("sale_id", chunk)
-            resp_i = await asyncio.to_thread(lambda: qi.execute())
-            for row in (resp_i.data or []):
+
+            def _bi(t, _c=chunk):
+                return t.select(
+                    "item_id, quantity, base_quantity, unit_id, total, cost_price, batch_id, batch_number, batch_expiry_date"
+                ).in_("sale_id", _c)
+
+            for row in await _select_paged(client, "sale_items", _bi, order_field="id"):
                 iid = row.get("item_id")
                 if iid:
                     t = item_totals[iid]
@@ -420,18 +442,30 @@ async def get_profit_report(
         return {"start_date": start_date, "end_date": end_date, "total_revenue": 0, "total_cost": 0, "gross_profit": 0, "profit_margin": 0}
 
     try:
-        # Get sales IDs
-        q = client.table("sales").select("id").eq(
-            "organization_id", org_id
-        ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
-            "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
-        ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
+        # Get sales in period (with net/total so line revenue can be scaled
+        # for the sale-level discount: line totals are pre-discount).
+        tz = await _org_zone(org_id)
+        lo, hi = _utc_window(start_date, end_date, tz)
         effective_branch = branch_id if (branch_id and branch_id not in ("undefined","")) else current_user.get("branch_id")
-        if effective_branch:
-            q = q.eq("branch_id", str(effective_branch))
 
-        resp = await asyncio.to_thread(lambda: q.execute())
-        sale_ids = [r["id"] for r in (resp.data or [])]
+        def _build(t):
+            qq = t.select("id, net_amount, total_amount, discount_amount").eq(
+                "organization_id", org_id
+            ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
+                "created_at", lo
+            ).lte("created_at", hi)
+            if effective_branch:
+                qq = qq.eq("branch_id", str(effective_branch))
+            return qq
+
+        sales_rows = await _select_paged(client, "sales", _build, order_field="id")
+        # net/total ratio scales pre-discount line totals down to what the
+        # customer actually paid (ex-tax). Falls back to 1 when unknown.
+        sale_scale = {}
+        for r in sales_rows:
+            tot = float(r.get("total_amount") or 0)
+            sale_scale[r["id"]] = (float(r.get("net_amount") or 0) / tot) if tot > 0 else 1.0
+        sale_ids = list(sale_scale.keys())
 
         total_revenue = 0.0
         total_cost = 0.0
@@ -443,12 +477,15 @@ async def get_profit_report(
             chunk_size = 100
             for i in range(0, len(sale_ids), chunk_size):
                 chunk = sale_ids[i:i + chunk_size]
-                qi = client.table("sale_items").select(
-                    "item_id, total, cost_price, quantity, base_quantity, batch_id, batch_number"
-                ).in_("sale_id", chunk)
-                resp_i = await asyncio.to_thread(lambda: qi.execute())
-                for row in (resp_i.data or []):
-                    revenue = float(row.get("total", 0))
+
+                def _bi(t, _c=chunk):
+                    return t.select(
+                        "sale_id, item_id, total, cost_price, quantity, base_quantity, batch_id, batch_number"
+                    ).in_("sale_id", _c)
+
+                for row in await _select_paged(client, "sale_items", _bi, order_field="id"):
+                    scale = sale_scale.get(row.get("sale_id"), 1.0)
+                    revenue = float(row.get("total", 0)) * scale
                     cost = _row_cogs(row)
                     total_revenue += revenue
                     total_cost += cost
@@ -655,13 +692,13 @@ async def get_sales_by_branch(
         branches = resp_b.data or []
 
         # Get sales in period
-        qs = client.table("sales").select("branch_id, net_amount").eq(
+        tz = await _org_zone(org_id)
+        lo, hi = _utc_window(start_date, end_date, tz)
+        sales = await _select_paged(client, "sales", lambda t: t.select("branch_id, net_amount").eq(
             "organization_id", org_id
         ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
-            "created_at", datetime.combine(start_date, datetime.min.time()).isoformat()
-        ).lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
-        resp_s = await asyncio.to_thread(lambda: qs.execute())
-        sales = resp_s.data or []
+            "created_at", lo
+        ).lte("created_at", hi))
 
         branch_totals = defaultdict(lambda: {"total_transactions": 0, "total_revenue": 0.0})
         for sale in sales:
@@ -714,17 +751,21 @@ async def get_sales_export(
         if not end_date:
             end_date = date.today()
 
-        q = client.table("sales").select("*") \
-            .eq("organization_id", org_id) \
-            .in_("payment_status", ["paid", "refunded", "returned", "partial_return"]) \
-            .gte("created_at", start_date.isoformat()) \
-            .lte("created_at", f"{end_date.isoformat()}T23:59:59")
+        tz = await _org_zone(org_id)
+        lo, hi = _utc_window(start_date, end_date, tz)
 
-        if branch_id:
-            q = q.eq("branch_id", branch_id)
+        def _build(t):
+            qq = t.select("*") \
+                .eq("organization_id", org_id) \
+                .in_("payment_status", ["paid", "refunded", "returned", "partial_return"]) \
+                .gte("created_at", lo) \
+                .lte("created_at", hi)
+            if branch_id:
+                qq = qq.eq("branch_id", branch_id)
+            return qq
 
-        resp = await asyncio.to_thread(lambda: q.order("created_at", desc=True).execute())
-        sales = resp.data or []
+        sales = await _select_paged(client, "sales", _build)
+        sales.sort(key=lambda s: s.get("created_at") or "", reverse=True)
 
         if not sales:
             return []
@@ -764,11 +805,14 @@ async def get_sales_export(
             sale_id = sale["id"]
             created_at = sale.get("created_at", "")
 
-            # Format datetime nicely
+            # Format datetime in the org's local timezone
             try:
                 dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                sale_date = dt.strftime("%Y-%m-%d")
-                sale_time = dt.strftime("%H:%M:%S")
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                local = dt.astimezone(tz)
+                sale_date = local.strftime("%Y-%m-%d")
+                sale_time = local.strftime("%H:%M:%S")
             except Exception:
                 sale_date = created_at[:10] if created_at else ""
                 sale_time = created_at[11:19] if len(created_at) > 10 else ""

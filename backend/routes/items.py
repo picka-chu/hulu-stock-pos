@@ -18,6 +18,20 @@ import asyncio
 router = APIRouter()
 
 
+async def _verify_ref_owned(table: str, ref_id, org_id, label: str):
+    """Reject category/supplier ids that belong to another organization
+    (cross-tenant reference injection through item create/update)."""
+    if not ref_id:
+        return None
+    rid = str(ref_id).strip()
+    if rid in ("", "undefined", "null"):
+        return None
+    row = await fetch_one(table, {"id": rid, "organization_id": str(org_id)})
+    if not row:
+        raise HTTPException(status_code=400, detail=f"{label} not found")
+    return rid
+
+
 async def _deduct_batches_fefo(client, item: dict, quantity: int, org_id: str, branch_id: str | None, user_id: str, reference_type: str, notes: str | None = None) -> int:
     """Deduct adjustment/shrinkage quantities from batches in FEFO order.
 
@@ -480,10 +494,16 @@ async def get_item_by_barcode(barcode: str, current_user: dict = Depends(get_cur
                 .eq("organization_id", org_id)
                 .eq("barcode", barcode)
                 .eq("is_active", True)
-                .limit(1)
+                .limit(10)
                 .execute()
         )
         items = resp.data or []
+        # Barcodes may legitimately exist in several branches (per-branch item
+        # rows). Always prefer the scanning user's own branch so stock/price
+        # come from the branch they are selling from.
+        if len(items) > 1 and current_user.get("branch_id"):
+            _ub = str(current_user["branch_id"])
+            items.sort(key=lambda x: str(x.get("branch_id") or "") != _ub)
         matched_tier = None
 
         if not items:
@@ -683,13 +703,17 @@ async def create_item(
             except Exception as e:
                 logger.warning(f"[Items] Duplicate barcode check failed (non-fatal): {e}")
 
+    # ── Category/supplier must belong to this organization ─────────────────────
+    category_id = await _verify_ref_owned("categories", item_data.category_id, org_id, "Category")
+    supplier_id = await _verify_ref_owned("suppliers", item_data.supplier_id, org_id, "Supplier")
+
     # Build item data - use organization_id from authenticated user for security
     item_dict = {
         "id": item_id,
         "organization_id": str(current_user["organization_id"]),
         "branch_id": str(item_branch_id) if item_branch_id else None,
-        "category_id": str(item_data.category_id) if item_data.category_id else None,
-        "supplier_id": str(item_data.supplier_id) if item_data.supplier_id else None,
+        "category_id": category_id,
+        "supplier_id": supplier_id,
         "name": item_data.name,
         "description": item_data.description,
         "barcode": item_data.barcode,
@@ -749,7 +773,7 @@ async def create_item(
             # (e.g. 600/carton ÷ 200 = 3/tablet) before sending, so the
             # opening batch cost is correct without a separate cost field.
             "unit_cost": float(item_data.buy_price),
-            "supplier_id": str(item_data.supplier_id) if item_data.supplier_id else None,
+            "supplier_id": supplier_id,
             "is_active": True,
         }
         try:
@@ -936,23 +960,35 @@ async def update_item(
     
     logger.info(f"[UPDATE ITEM] item_id={item_id}, org_id={current_user['organization_id']}")
     logger.info(f"[UPDATE ITEM] update_data={update_data}")
+
+    # Category/supplier must belong to this organization
+    if "category_id" in update_data:
+        update_data["category_id"] = await _verify_ref_owned(
+            "categories", update_data["category_id"], current_user["organization_id"], "Category")
+    if "supplier_id" in update_data:
+        update_data["supplier_id"] = await _verify_ref_owned(
+            "suppliers", update_data["supplier_id"], current_user["organization_id"], "Supplier")
     
-    # If barcode is being changed, check it doesn't conflict with another item
+    # Barcode uniqueness is per-branch (same rule as create/fast-scan): each
+    # branch keeps its own row for shared products; the scanner lookup prefers
+    # the user's branch. An org-wide check here would block legitimate
+    # multi-branch setups.
+    _self_row = await fetch_one("items", {"id": str(item_id), "organization_id": str(current_user["organization_id"])})
     if "barcode" in update_data and update_data["barcode"]:
         new_bc = str(update_data["barcode"]).strip()
+        _item_branch = update_data.get("branch_id") or (_self_row or {}).get("branch_id")
         _uc2 = await get_supabase_client()
         if _uc2:
             try:
-                _dup = await asyncio.to_thread(
-                    lambda: _uc2.table("items")
-                        .select("id,name")
-                        .eq("organization_id", str(current_user["organization_id"]))
-                        .eq("barcode", new_bc)
-                        .eq("is_active", True)
-                        .neq("id", str(item_id))   # exclude the item being edited
-                        .limit(1)
-                        .execute()
-                )
+                _dup_q = _uc2.table("items") \
+                    .select("id,name") \
+                    .eq("organization_id", str(current_user["organization_id"])) \
+                    .eq("barcode", new_bc) \
+                    .eq("is_active", True) \
+                    .neq("id", str(item_id))   # exclude the item being edited
+                if _item_branch:
+                    _dup_q = _dup_q.eq("branch_id", str(_item_branch))
+                _dup = await asyncio.to_thread(lambda: _dup_q.limit(1).execute())
                 _existing = (_dup.data or [None])[0]
                 if _existing:
                     raise HTTPException(

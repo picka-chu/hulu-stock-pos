@@ -738,6 +738,15 @@ async def create_quick_item(
     if not client:
         raise HTTPException(503, "Database unavailable")
 
+    # ── Cross-tenant guards: branch and supplier must belong to this org ─────
+    from middleware.auth import verify_branch_in_org
+    if body.branch_id and not await verify_branch_in_org(str(body.branch_id), str(org_id)):
+        raise HTTPException(404, "Branch not found")
+    if body.supplier_id:
+        from database import fetch_one as _fetch_one
+        if not await _fetch_one("suppliers", {"id": str(body.supplier_id), "organization_id": str(org_id)}):
+            raise HTTPException(400, "Supplier not found")
+
     # ── Upload expiry image ──────────────────────────────────────────────────
     expiry_image_url = None
     if body.expiry_image:

@@ -48,15 +48,12 @@ async def get_dashboard_stats(
 
     # ── Fetch org timezone and compute real "today" boundaries ────────────────
     try:
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        from routes.utils import _safe_zone
         org_resp = await asyncio.to_thread(
             lambda: client.table("organizations").select("timezone").eq("id", org_id).limit(1).execute()
         )
-        tz_name = (org_resp.data or [{}])[0].get("timezone") or "UTC"
-        try:
-            tz = ZoneInfo(tz_name)
-        except (ZoneInfoNotFoundError, Exception):
-            tz = ZoneInfo("UTC")
+        tz_name = (org_resp.data or [{}])[0].get("timezone")
+        tz = _safe_zone(tz_name)
 
         now_local  = datetime.now(tz)
         today_local = now_local.date()

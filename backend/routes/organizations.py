@@ -69,6 +69,13 @@ async def update_current_organization(
             detail="Only administrators can update organization settings"
         )
 
+    # Self-deactivation would lock the entire org out with no way back.
+    if org_data.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Deactivation requires the superadmin."
+        )
+
     update_data = {}
     if org_data.name is not None:
         update_data["name"] = org_data.name
@@ -105,9 +112,14 @@ async def update_current_organization(
 @router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization(
     org_data: OrganizationCreate,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Create new organization"""
+    """Create new organization — superadmin only (tenant self-serve would orphan the org)."""
+    if current_user.get("role") != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the superadmin can create organizations. Submit a registration request instead."
+        )
     from uuid import uuid4
     org_id = str(uuid4())
     
@@ -142,9 +154,11 @@ async def update_organization(
     org_data: OrganizationUpdate,
     current_user: dict = Depends(require_admin)
 ):
-    """Update organization — admin can only update their own org"""
+    """Update organization — admin can only update their own org (never active status)"""
     if str(org_id) != str(current_user["organization_id"]):
         raise HTTPException(status_code=403, detail="Cannot update another organization")
+    if org_data.is_active is False:
+        raise HTTPException(status_code=403, detail="Deactivation requires the superadmin.")
     # Update using proper update method
     update_data = {}
     
@@ -181,11 +195,13 @@ async def update_organization(
 @router.delete("/{org_id}")
 async def delete_organization(
     org_id: UUID,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Delete organization — admin can only delete their own org"""
-    if str(org_id) != str(current_user["organization_id"]):
-        raise HTTPException(status_code=403, detail="Cannot delete another organization")
+    """Delete organization — superadmin only. Tenant admins can only deactivate via support."""
+    if current_user.get("role") != "superadmin":
+        raise HTTPException(status_code=403, detail="Only the superadmin can delete an organization.")
+    # Tenant callers (shouldn't reach here) are still org-scoped; superadmin
+    # tokens carry organization_id None and may delete any org.
     filters = {"id": str(org_id)}
     result = await delete_one("organizations", filters)
     

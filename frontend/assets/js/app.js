@@ -2519,6 +2519,7 @@ function openPaymentModal() {
     document.getElementById('bankAmount').value = '0';
     document.getElementById('mobileMoneyAmount').value = '0';
     document.getElementById('posDiscountAmount').value = '0';
+    document.getElementById('posDiscountType').value = 'amount';
     document.getElementById('paymentBank').value = '';
     document.getElementById('bankSelectDiv').classList.add('hidden');
     document.getElementById('paymentValidation').classList.add('hidden');
@@ -2532,12 +2533,22 @@ function openPaymentModal() {
     document.getElementById('paymentModal').classList.add('active');
 }
 
+// Discount can be entered as a flat amount or a percentage of the
+// pre-discount total (subtotal + tax). Returns the money value, clamped
+// to [0, baseTotal]; the backend applies the same clamp again.
+function _posDiscountValue(baseTotal) {
+    const raw = parseFloat(document.getElementById('posDiscountAmount')?.value) || 0;
+    const type = document.getElementById('posDiscountType')?.value || 'amount';
+    const d = type === 'percent' ? baseTotal * Math.min(raw, 100) / 100 : raw;
+    return Math.min(Math.max(0, d), baseTotal);
+}
+
 function updatePaymentSummary() {
     const cashAmount = parseFloat(document.getElementById('cashAmount').value) || 0;
     const bankAmount = parseFloat(document.getElementById('bankAmount').value) || 0;
     const mobileMoneyAmount = parseFloat(document.getElementById('mobileMoneyAmount').value) || 0;
-    const discountAmount = parseFloat(document.getElementById('posDiscountAmount')?.value) || 0;
     const baseTotal = AppState.subtotalBeforeDiscount || AppState.grandTotal || 0;
+    const discountAmount = _posDiscountValue(baseTotal);
     const grandTotal = Math.max(0, baseTotal - discountAmount);
     AppState.grandTotal = grandTotal;
     // Update displayed total
@@ -2647,7 +2658,7 @@ async function completeSale() {
     const tax = subtotal * ((AppState.organization?.tax_percentage || 10) / 100);
     
     try {
-        const discountAmount = parseFloat(document.getElementById('posDiscountAmount')?.value) || 0;
+        const discountAmount = _posDiscountValue(AppState.subtotalBeforeDiscount || (subtotal + tax));
         // Idempotency key: stable for this exact cart so a retry after a
         // timeout does not create a duplicate sale; rotates when the cart,
         // branch, or discount changes, and after each completed sale.
@@ -2681,7 +2692,7 @@ async function completeSale() {
                 unit_name: unitLabel(i.unit_id),
                 unit_price: i.sell_price,
             })),
-            subtotal, tax_amount: tax, discount_amount: parseFloat(document.getElementById('posDiscountAmount')?.value) || 0,
+            subtotal, tax_amount: tax, discount_amount: discountAmount,
             total_amount: grandTotal,
             cash_paid: cashAmount, bank_paid: bankAmount, mobile_paid: mobileMoneyAmount,
         };
@@ -7698,9 +7709,13 @@ const PhoneCamera = (() => {
             return;
         }
 
-        // Generate a stable session ID for this browser tab
-        _sessionId = localStorage.getItem(SESSION_KEY) || _genId();
-        localStorage.setItem(SESSION_KEY, _sessionId);
+        // Session id: keep a stored one only if it's the new 32-hex format;
+        // rotate legacy (short, Math.random) ids on first use.
+        _sessionId = localStorage.getItem(SESSION_KEY) || '';
+        if (!/^[0-9a-f]{32}$/.test(_sessionId)) {
+            _sessionId = _genId();
+            localStorage.setItem(SESSION_KEY, _sessionId);
+        }
 
         // Build the phone URL — same origin with ?phone_cam=<sessionId> flag
         const url = `${location.origin}${location.pathname}?phone_cam=${_sessionId}`;
@@ -7717,8 +7732,17 @@ const PhoneCamera = (() => {
     }
 
     function _genId() {
-        return Math.random().toString(36).slice(2, 10) +
-               Math.random().toString(36).slice(2, 10);
+        // Cryptographically random: Math.random() session ids could in
+        // principle be predicted, letting a stranger broadcast frames into
+        // this POS session's phone-camera channel.
+        try {
+            const a = new Uint8Array(16);
+            (window.crypto || crypto).getRandomValues(a);
+            return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
+        } catch (e) {
+            return Math.random().toString(36).slice(2, 10) +
+                   Math.random().toString(36).slice(2, 10);
+        }
     }
 
     function _renderQR(url) {

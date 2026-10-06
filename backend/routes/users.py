@@ -14,6 +14,20 @@ from database import fetch_one, insert_one, update_one, delete_one, get_supabase
 router = APIRouter()
 
 
+async def _active_admins_excluding(org_id, exclude_id=None) -> int:
+    """Count active admins in the org excluding one user (last-admin guard)."""
+    client = await get_supabase_client()
+    if not client:
+        return 99  # fail open only when DB is down (writes will fail anyway)
+    q = client.table("users").select("id", count="exact") \
+        .eq("organization_id", str(org_id)).eq("role", "admin").eq("is_active", True)
+    if exclude_id:
+        q = q.neq("id", str(exclude_id))
+    resp = await asyncio.to_thread(lambda: q.execute())
+    return int(resp.count or 0)
+
+
+
 @router.get("", response_model=List[UserResponse])
 async def get_users(
     page: int = 1,
@@ -114,6 +128,11 @@ async def update_user(user_id: UUID, user_data: UserUpdate, current_user: dict =
     if not existing:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # H: managers may not touch admin accounts (only admins manage admins).
+    actor_role = current_user.get("role")
+    if existing.get("role") == "admin" and actor_role != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can edit admin users")
+
     updates = {}
     if user_data.full_name is not None: updates["full_name"] = user_data.full_name
     if user_data.phone     is not None: updates["phone"]     = user_data.phone
@@ -124,7 +143,20 @@ async def update_user(user_id: UUID, user_data: UserUpdate, current_user: dict =
         if current_user.get("role") == "manager" and new_role == "admin":
             raise HTTPException(status_code=403, detail="Managers cannot promote to admin")
         updates["role"] = new_role
-    if user_data.is_active is not None: updates["is_active"] = user_data.is_active
+    if user_data.is_active is not None:
+        if str(user_id) == str(current_user["id"]) and user_data.is_active is False:
+            raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
+        updates["is_active"] = user_data.is_active
+
+    # Never let the org lose its last active admin (demote or deactivate).
+    losing_admin = (
+        existing.get("role") == "admin"
+        and existing.get("is_active", True)
+        and (updates.get("role") not in (None, "admin") or updates.get("is_active") is False)
+    )
+    if losing_admin and await _active_admins_excluding(current_user["organization_id"], exclude_id=str(user_id)) == 0:
+        raise HTTPException(status_code=409, detail="Cannot remove or deactivate the last administrator")
+
     if user_data.branch_id is not None:
         if user_data.branch_id and not await verify_branch_in_org(str(user_data.branch_id), str(current_user["organization_id"])):
             raise HTTPException(status_code=404, detail="Branch not found")
@@ -152,9 +184,11 @@ async def change_password(
     body: dict,
     current_user: dict = Depends(get_current_user)
 ):
-    # M1: self-service or manager+ only; cashier cannot reset others
-    if str(user_id) != str(current_user["id"]) and current_user.get("role") not in ("admin", "manager"):
-        raise HTTPException(status_code=403, detail="Cannot change another user's password")
+    # M1: self-service or admin reset only; cashiers/managers can't touch others.
+    is_self = str(user_id) == str(current_user["id"])
+    actor_role = current_user.get("role")
+    if not is_self and actor_role != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can reset another user's password")
     old_password = body.get("old_password", "")
     new_password = body.get("new_password", "")
 
@@ -164,7 +198,9 @@ async def change_password(
     user = await fetch_one("users", {"id": str(user_id), "organization_id": current_user["organization_id"]})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not verify_password(old_password, user["password_hash"]):
+    # Self-change requires the current password; an admin resetting someone else
+    # does not know it (that reset is the recovery path for lost passwords).
+    if is_self and not verify_password(old_password, user["password_hash"]):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     await update_one("users", {"password_hash": get_password_hash(new_password)}, {"id": str(user_id), "organization_id": current_user["organization_id"]})
@@ -175,6 +211,15 @@ async def change_password(
 async def delete_user(user_id: UUID, current_user: dict = Depends(require_manager)):
     if str(user_id) == str(current_user["id"]):
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    target = await fetch_one("users", {"id": str(user_id), "organization_id": current_user["organization_id"]})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin" and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can delete admin users")
+    if target.get("role") == "admin" and target.get("is_active", True) \
+            and await _active_admins_excluding(current_user["organization_id"], exclude_id=str(user_id)) == 0:
+        raise HTTPException(status_code=409, detail="Cannot delete the last administrator")
 
     result = await delete_one("users", {"id": str(user_id), "organization_id": current_user["organization_id"]})
     if not result:

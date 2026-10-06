@@ -560,10 +560,12 @@ async def get_sales(
             q = q.eq("branch_id", str(effective_branch))
         # admin with no branch and no param = sees all branches
 
-        if start_date:
-            q = q.gte("created_at", datetime.combine(start_date, datetime.min.time()).isoformat())
-        if end_date:
-            q = q.lte("created_at", datetime.combine(end_date, datetime.max.time()).isoformat())
+        if start_date or end_date:
+            # Window in the org's local day (fallback Addis/UTC+3), not server UTC.
+            from routes.utils import _org_zone, _utc_window
+            tz = await _org_zone(org_id)
+            lo, hi = _utc_window(start_date or end_date, end_date or start_date, tz)
+            q = q.gte("created_at", lo).lte("created_at", hi)
         if payment_status:
             q = q.eq("payment_status", payment_status)
         if payment_method:
