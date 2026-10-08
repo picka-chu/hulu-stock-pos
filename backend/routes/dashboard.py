@@ -71,7 +71,7 @@ async def get_dashboard_stats(
 
     # Today's Sales
     try:
-        q = client.table("sales").select("id, net_amount").eq(
+        q = client.table("sales").select("id, net_amount, total_amount").eq(
             "organization_id", org_id
         ).in_("payment_status", ["paid", "refunded", "returned", "partial_return"]).gte(
             "created_at", today_start
@@ -83,11 +83,19 @@ async def get_dashboard_stats(
         today_sales = sum(float(r.get("net_amount", 0)) for r in sales_rows)
         today_transactions = len(sales_rows)
         today_sale_ids = [r["id"] for r in sales_rows if "id" in r]
+        # Discount share per sale: sale_items.line totals are pre-discount,
+        # so profit must scale revenue by net/total to match /reports/profit.
+        sale_net_ratio = {}
+        for r in sales_rows:
+            _tot = float(r.get("total_amount") or 0)
+            _net = float(r.get("net_amount") or 0)
+            sale_net_ratio[r.get("id")] = (_net / _tot) if _tot > 0 else 1.0
     except Exception as e:
         logger.error(f"Dashboard today_sales error: {e}")
         today_sales = 0.0
         today_transactions = 0
         today_sale_ids = []
+        sale_net_ratio = {}
 
     # Today's Profit
     today_profit = 0.0
@@ -97,11 +105,11 @@ async def get_dashboard_stats(
             for i in range(0, len(today_sale_ids), chunk_size):
                 chunk = today_sale_ids[i:i + chunk_size]
                 qi = client.table("sale_items").select(
-                    "total, cost_price, quantity, base_quantity, batch_id, batch_number"
+                    "sale_id, total, cost_price, quantity, base_quantity, batch_id, batch_number"
                 ).in_("sale_id", chunk)
                 resp_i = await asyncio.to_thread(lambda: qi.execute())
                 for row in (resp_i.data or []):
-                    revenue = float(row.get("total", 0))
+                    revenue = float(row.get("total", 0)) * sale_net_ratio.get(row.get("sale_id"), 1.0)
                     base_qty = float(row.get("base_quantity") or row.get("quantity", 0))
                     sold_qty = float(row.get("quantity") or row.get("base_quantity", 0))
                     has_batch = bool(row.get("batch_id") or row.get("batch_number"))

@@ -1288,7 +1288,7 @@ async def bulk_stock_adjust(
                     "item_id": item_id, "batch_number": adj.get("batch_number"),
                     "expiry_date": adj.get("expiry_date"), "received_quantity": receipt_qty,
                     "quantity_on_hand": receipt_qty,
-                    "unit_cost": adj.get("unit_cost") if adj.get("unit_cost") not in (None, "") else item.get("buy_price"),
+                    "unit_cost": float(adj.get("unit_cost")) if adj.get("unit_cost") not in (None, "") else item.get("buy_price"),
                     "supplier_id": adj.get("supplier_id"), "is_active": True,
                 })
                 # Re-derive the projection from the ledger so it cannot drift.

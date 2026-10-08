@@ -8118,9 +8118,10 @@ async function openBulkStockAdjustModal() {
                 <div class="modal-body">
                     <p style="font-size:13px;color:var(--text-3);margin:0 0 14px;">
                         Paste or type adjustments — one per line in format:<br>
-                        <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px;">BARCODE, qty, add|subtract|set</code>
+                        <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px;">BARCODE, qty, add|subtract|set[, unit_cost]</code><br>
+                        Optional <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px;">unit_cost</code> records the batch's own buying cost on add/set.
                     </p>
-                    <textarea id="_bulkAdjText" class="form-input" rows="8" placeholder="8714100772523, 10, add&#10;6291103660654, 5, subtract&#10;8901030895245, 20, set"
+                    <textarea id="_bulkAdjText" class="form-input" rows="8" placeholder="8714100772523, 10, add, 4.50&#10;6291103660654, 5, subtract&#10;8901030895245, 20, set, 3.25"
                         style="font-family:monospace;font-size:13px;resize:vertical;"></textarea>
                     <div id="_bulkAdjResult" style="margin-top:12px;font-size:13px;color:var(--text-2);min-height:20px;"></div>
                 </div>
@@ -8151,13 +8152,18 @@ async function processBulkStockAdj() {
     for (const line of lines) {
         const parts = line.split(',').map(p => p.trim());
         if (parts.length < 3) { errors.push(`Bad format: ${line}`); continue; }
-        const [barcode, qtyStr, type] = parts;
+        const [barcode, qtyStr, type, costStr] = parts;
         const qty = parseInt(qtyStr);
         if (isNaN(qty) || qty < 0) { errors.push(`Invalid qty: ${line}`); continue; }
         if (!['add','subtract','set'].includes(type)) { errors.push(`Invalid type (use add/subtract/set): ${line}`); continue; }
+        const unitCost = costStr !== undefined && costStr !== '' ? parseFloat(costStr) : NaN;
+        if (costStr !== undefined && costStr !== '' && isNaN(unitCost)) { errors.push(`Invalid unit_cost: ${line}`); continue; }
         try {
             const item = await window.ItemsAPI.getByBarcode(barcode);
-            adjustments.push({ item_id: item.id, quantity: qty, type, reason: 'Bulk adjustment' });
+            adjustments.push({
+                item_id: item.id, quantity: qty, type, reason: 'Bulk adjustment',
+                ...(!isNaN(unitCost) ? { unit_cost: unitCost } : {}),
+            });
         } catch { errors.push(`Barcode not found: ${barcode}`); }
     }
 
